@@ -8,7 +8,7 @@
 ## Install
 
 ```bash
-npm install genquery
+npm install @generazioneai/genquery
 ```
 
 If you use the TypeORM adapter, add it as a peer dependency:
@@ -39,7 +39,7 @@ If you use TypeORM, you don't write a schema — `schemaFromTypeORM` reads your 
 ```typescript
 import "reflect-metadata";
 import { DataSource } from "typeorm";
-import { schemaFromTypeORM } from "genquery/typeorm";
+import { schemaFromTypeORM } from "@generazioneai/genquery/typeorm";
 
 const dataSource = new DataSource({
   type: "postgres",
@@ -82,7 +82,7 @@ Type mapping (default):
 If you don't use TypeORM, or want full control, declare a schema literal instead:
 
 ```typescript
-import { Schema } from "genquery";
+import { Schema } from "@generazioneai/genquery";
 
 const schema: Schema = {
   entities: {
@@ -106,8 +106,8 @@ const schema: Schema = {
 ### 3. Create the adapter and engine
 
 ```typescript
-import { GenQueryEngine } from "genquery";
-import { TypeORMAdapter } from "genquery/typeorm";
+import { GenQueryEngine } from "@generazioneai/genquery";
+import { TypeORMAdapter } from "@generazioneai/genquery/typeorm";
 
 const adapter = new TypeORMAdapter(schema);
 const engine  = new GenQueryEngine({ adapter });   // schema is read from the adapter
@@ -119,7 +119,7 @@ There's only one source of truth — the schema lives on the adapter, and the en
 
 ```typescript
 import type { Request, Response } from "express";
-import { QueryValidationError } from "genquery";
+import { QueryValidationError } from "@generazioneai/genquery";
 
 export async function listUsers(req: Request, res: Response) {
   const qb = userRepository.createQueryBuilder("User");

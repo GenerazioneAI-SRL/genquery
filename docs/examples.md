@@ -465,7 +465,7 @@ Search for active users named "mario" or "luigi", born after 2000, with at least
 Use `engine.parse()` when you want to validate and inspect the query before running it:
 
 ```typescript
-import { QueryValidationError } from "genquery";
+import { QueryValidationError } from "@generazioneai/genquery";
 
 function validateQuery(body: unknown) {
   try {

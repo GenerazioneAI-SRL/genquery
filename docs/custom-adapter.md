@@ -15,8 +15,8 @@ interface Adapter<TTarget, TResult> {
 A Prisma adapter that builds a `findMany` args object:
 
 ```typescript
-import type { Adapter } from "genquery";
-import type { Schema, ParsedQuery, ParsedFieldCondition } from "genquery";
+import type { Adapter } from "@generazioneai/genquery";
+import type { Schema, ParsedQuery, ParsedFieldCondition } from "@generazioneai/genquery";
 
 type PrismaWhere = Record<string, unknown>;
 
@@ -102,7 +102,7 @@ export class PrismaAdapter implements Adapter<undefined, PrismaFindManyArgs> {
 ## Wire it up
 
 ```typescript
-import { GenQueryEngine } from "genquery";
+import { GenQueryEngine } from "@generazioneai/genquery";
 
 const adapter = new PrismaAdapter(schema);
 const engine  = new GenQueryEngine({ adapter });   // schema is read from the adapter

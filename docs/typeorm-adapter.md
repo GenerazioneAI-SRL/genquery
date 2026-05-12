@@ -3,7 +3,7 @@
 ## Import
 
 ```typescript
-import { TypeORMAdapter, schemaFromTypeORM } from "genquery/typeorm";
+import { TypeORMAdapter, schemaFromTypeORM } from "@generazioneai/genquery/typeorm";
 ```
 
 `typeorm` must be installed as a peer dependency (`npm install typeorm`).

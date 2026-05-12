@@ -1,5 +1,8 @@
 {
-  "name": "genquery",
+  "name": "@generazioneai/genquery",
+  "publishConfig": {
+    "access": "public"
+  },
   "version": "0.1.0",
   "description": "ORM-agnostic JSON query language with pluggable adapters (TypeORM, ...)",
   "license": "BSD-3-Clause",

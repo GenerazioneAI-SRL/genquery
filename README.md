@@ -7,7 +7,7 @@ Frontends send a `GenQueryInput` object. The backend validates it against a `Sch
 ## Install
 
 ```bash
-npm install genquery
+npm install @generazioneai/genquery
 # TypeORM adapter (optional)
 npm install typeorm
 ```
@@ -17,7 +17,7 @@ npm install typeorm
 ```typescript
 import "reflect-metadata";
 import { DataSource } from "typeorm";
-import { createTypeORMEngine } from "genquery/typeorm";
+import { createTypeORMEngine } from "@generazioneai/genquery/typeorm";
 
 // 1. Initialize TypeORM with your entity classes
 const dataSource = new DataSource({ /* ... */ entities: [User, Post] });
@@ -69,7 +69,7 @@ The `Schema` describes your data model independently of any ORM. The parser uses
 With TypeORM, derive it from the DataSource — no duplication:
 
 ```typescript
-import { schemaFromTypeORM } from "genquery/typeorm";
+import { schemaFromTypeORM } from "@generazioneai/genquery/typeorm";
 
 const schema = schemaFromTypeORM(dataSource);
 // optional: restrict to specific entities
@@ -167,7 +167,7 @@ engine.runParsed(parsed, target);
 Parse failures throw `QueryValidationError` with a `path` field pointing to the offending location in the input (e.g. `"searchBy.posts.title.value"`).
 
 ```typescript
-import { QueryValidationError } from "genquery";
+import { QueryValidationError } from "@generazioneai/genquery";
 
 try {
   engine.run(input, "User", qb);
@@ -198,7 +198,7 @@ Wire types (types.ts)
        └─ Adapter consumes ParsedQuery + Schema → ORM output
 ```
 
-Adapters never see wire types. New adapters implement `Adapter<TTarget, TResult>` from `genquery/adapters/base`.
+Adapters never see wire types. New adapters implement `Adapter<TTarget, TResult>` (re-exported from the package root).
 
 See [docs/custom-adapter.md](docs/custom-adapter.md) for instructions.
 
