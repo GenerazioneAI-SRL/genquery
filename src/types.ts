@@ -1,0 +1,217 @@
+/**
+ * Raw input types as accepted from the wire.
+ *
+ * These mirror the spec literally. Anything received from the frontend should
+ * conform to `GenQueryInput`. Use the parser to validate + normalize into the
+ * `Parsed*` types defined in `./parsed.ts`.
+ *
+ * The input types are generic on an entity type `T`. With `T = unknown`
+ * (default) you get the loose, untyped form. Pass a concrete entity class
+ * (`GenQueryInput<User>`) to get autocomplete and value-shape checking for
+ * fields and relations.
+ */
+
+export type SortOrder = "asc" | "desc";
+export type StringSearchMode = "splitword" | "exact" | "nativeregex";
+export type NumericOp = ">" | "<" | ">=" | "<=" | "==";
+
+/** Timezone offset. "Z" (UTC) or "+HH:MM" / "-HH:MM" (also "+HHMM" / "+HH"). */
+export type OffsetInput = string;
+
+export interface DateTimeObjectInput {
+  year?: number;
+  month?: number;
+  day?: number;
+  hours?: number;
+  minutes?: number;
+  seconds?: number;
+  offset?: OffsetInput;
+}
+
+export type DateTimeInput = string | DateTimeObjectInput;
+
+export interface NumericComparisonInput {
+  operation?: NumericOp;
+  value: number;
+}
+
+export interface StringSearchObjectInput {
+  mode?: StringSearchMode;
+  contained?: boolean;
+  /** Case-sensitive comparison. Defaults to `false` (case-insensitive). */
+  caseSensitive?: boolean;
+  value: string;
+}
+
+export type StringSearchInput = string | StringSearchObjectInput;
+
+export interface DateRangeInput {
+  before?: DateTimeInput;
+  after?: DateTimeInput;
+}
+
+export type DateSearchInput = DateTimeInput | DateRangeInput;
+
+export type NumberSearchInput = number | NumericComparisonInput;
+
+export type BoolSearchInput = boolean;
+
+// ----------------------------------------------------------------------------
+// Type-level helpers: distinguish primitive fields from relation properties on
+// an entity class, and map each field's TS type to the right search shape.
+// ----------------------------------------------------------------------------
+
+/** Detects the `any` type, which otherwise satisfies every conditional. */
+type IsAny<T> = 0 extends 1 & T ? true : false;
+
+/** True iff T is `unknown` or `any` — i.e. caller didn't constrain. */
+type IsLoose<T> = IsAny<T> extends true
+  ? true
+  : unknown extends T
+    ? true
+    : false;
+
+type Prim = string | number | boolean | Date;
+
+/**
+ * Picks the right search value shape for a single property's TS type.
+ *
+ * For string literal unions (enum-style), the value is strictly constrained
+ * to the union members — both the enum member form (`UserRoles.admin`) and the
+ * matching string literal (`"admin"`) compile. Arbitrary `string` variables
+ * are rejected at compile time; cast them if you really need to pass them.
+ */
+type SearchValueFor<V> =
+  [NonNullable<V>] extends [Date] ? DateSearchInput :
+  [NonNullable<V>] extends [string]
+    ? [string] extends [NonNullable<V>]
+      ? StringSearchInput                              // V is exactly `string`
+      : NonNullable<V> | `${NonNullable<V> & string}` // enum members + matching string literals
+    :
+  [NonNullable<V>] extends [number] ? NumberSearchInput :
+  [NonNullable<V>] extends [boolean] ? BoolSearchInput :
+  [NonNullable<V>] extends [(infer U)[]] ? SearchByInput<NonNullable<U>> :
+  [NonNullable<V>] extends [object] ? SearchByInput<NonNullable<V>> :
+  unknown;
+
+/** Keys of T whose value is a primitive (string/number/boolean/Date). */
+type FieldKeysOf<T> = {
+  [K in keyof T]-?: [NonNullable<T[K]>] extends [Prim] ? K : never;
+}[keyof T];
+
+/** Keys of T whose value is a relation (array of object, or object). */
+type RelationKeysOf<T> = {
+  [K in keyof T]-?: [NonNullable<T[K]>] extends [Prim]
+    ? never
+    : [NonNullable<T[K]>] extends [object]
+      ? K
+      : never;
+}[keyof T];
+
+/** Strips relation arrays down to their element type. */
+type RelationTargetOf<T, K extends keyof T> =
+  [NonNullable<T[K]>] extends [(infer U)[]] ? NonNullable<U> :
+  [NonNullable<T[K]>] extends [object] ? NonNullable<T[K]> :
+  never;
+
+// ----------------------------------------------------------------------------
+// searchBy
+// ----------------------------------------------------------------------------
+
+/**
+ * `searchBy` is a recursive object whose keys are field names of the current
+ * entity, relation names of the current entity, or the literal `OR`.
+ *
+ * Values depend on the kind of field:
+ *  - string field: `StringSearchInput`
+ *  - number field: `NumberSearchInput`
+ *  - boolean field: `BoolSearchInput`
+ *  - date field:   `DateSearchInput`
+ *  - relation:     a nested `SearchByInput` against the related entity
+ *
+ * The `OR` key is special: it takes an array of full `SearchByInput`s; matches
+ * if any of them matches. All non-`OR` entries combine with AND.
+ */
+export type SearchByInput<T = unknown> = IsLoose<T> extends true
+  ? LooseSearchByInput
+  : TypedSearchByInput<T>;
+
+export type LooseSearchByInput = {
+  OR?: LooseSearchByInput[];
+  [field: string]: unknown;
+};
+
+export type TypedSearchByInput<T> = {
+  OR?: TypedSearchByInput<T>[];
+} & {
+  [K in Exclude<keyof T, "OR"> as [NonNullable<T[K]>] extends [Prim | object]
+    ? K
+    : never]?: SearchValueFor<T[K]>;
+};
+
+// ----------------------------------------------------------------------------
+// orderBy
+// ----------------------------------------------------------------------------
+
+export interface OrderByObjectInput<TField extends string = string> {
+  field: TField;
+  order?: SortOrder;
+}
+
+export type OrderByInput<T = unknown> = IsLoose<T> extends true
+  ? string | OrderByObjectInput<string>
+  : FieldKeysOf<T> & string extends infer F extends string
+    ? F | OrderByObjectInput<F>
+    : never;
+
+// ----------------------------------------------------------------------------
+// include
+// ----------------------------------------------------------------------------
+
+export type IncludeFieldSpec = boolean;
+
+export type IncludeRelationSpec<U = unknown> = IsLoose<U> extends true
+  ? "all" | { [field: string]: IncludeFieldSpec }
+  :
+      | "all"
+      | { [K in FieldKeysOf<U>]?: IncludeFieldSpec };
+
+export type IncludeInput<T = unknown> = IsLoose<T> extends true
+  ? "none" | "all" | { [relation: string]: IncludeRelationSpec }
+  :
+      | "none"
+      | "all"
+      | { [K in RelationKeysOf<T>]?: IncludeRelationSpec<RelationTargetOf<T, K>> };
+
+// ----------------------------------------------------------------------------
+// select
+// ----------------------------------------------------------------------------
+
+export type SelectInput<T = unknown> = IsLoose<T> extends true
+  ? "none" | "all" | { [field: string]: boolean }
+  :
+      | "none"
+      | "all"
+      | { [K in FieldKeysOf<T>]?: boolean };
+
+// ----------------------------------------------------------------------------
+// pagination
+// ----------------------------------------------------------------------------
+
+export interface PaginationObjectInput {
+  page?: number;
+  perPage?: number;
+}
+export type PaginationInput = "all" | "first" | PaginationObjectInput;
+
+// ----------------------------------------------------------------------------
+// Top-level
+// ----------------------------------------------------------------------------
+
+export interface GenQueryInput<T = unknown> {
+  orderBy?: OrderByInput<T>;
+  searchBy?: SearchByInput<T>;
+  include?: IncludeInput<T>;
+  select?: SelectInput<T>;
+  pagination?: PaginationInput;
+}

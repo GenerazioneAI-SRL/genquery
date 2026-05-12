@@ -33,7 +33,7 @@ It's not a proper spec, more like an example than a spec, but it's fairly compre
 		},
 
 		numericComparisonType: {
-			type: ">" | "<" | ">=" | "<=" | @"=="
+			operation: ">" | "<" | ">=" | "<=" | @"=="
 			*value: number
 		},
 	```
@@ -116,6 +116,8 @@ A string is searched against a specified regex. The regex is in the language nat
 
 			contained: true | @false, // This means that the query should match as part of a string, so "something" would also match "somethingelse"
 
+			caseSensitive: true | @false, // When false (default), comparison is case-insensitive. Applies to all modes including nativeregex.
+
 			*value: "something", // a value
 		},
 
@@ -144,9 +146,15 @@ A string is searched against a specified regex. The regex is in the language nat
 		// number
 
 		exampleNumberField: number | {
-			type: ">" | "<" | ">=" | "<=" | @"==",
+			operation: ">" | "<" | ">=" | "<=" | @"==",
 			*value: number
 		},
+
+		// enum
+
+		// An enum field must be a string value that matches one of the allowed
+		// values declared in the schema. The parser rejects anything else.
+		exampleEnumField: "allowedValue1" | "allowedValue2" | ...,
 
 		// OR
 
