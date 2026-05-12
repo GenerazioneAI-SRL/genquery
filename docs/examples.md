@@ -432,6 +432,26 @@ First result only:
 { "pagination": "first" }
 ```
 
+Skip the count query when you only need the page rows (no total in the UI):
+
+```json
+{
+  "pagination": { "page": 2, "perPage": 25, "showTotal": false }
+}
+```
+
+`engine.run` returns `{ data, current?, total? }` directly:
+
+```typescript
+const qb = userRepository.createQueryBuilder("User");
+const { data, current, total } = await engine.run(
+  { pagination: { page: 2, perPage: 25 } },
+  qb,
+);
+// current === data.length
+// total   === rows matched ignoring page/perPage (via getManyAndCount)
+```
+
 ---
 
 ## Full example
@@ -470,7 +490,8 @@ import { QueryValidationError } from "@generazioneai/genquery";
 function validateQuery(body: unknown) {
   try {
     const parsed = engine.parse(body as GenQueryInput, "User");
-    console.log(parsed.pagination); // { kind: "page", page: 0, perPage: 20 }
+    console.log(parsed.pagination);
+    // { kind: "page", page: 0, perPage: 20, showNumber: true, showTotal: true }
     return parsed;
   } catch (e) {
     if (e instanceof QueryValidationError) {

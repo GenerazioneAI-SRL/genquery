@@ -88,9 +88,31 @@ export type ParsedInclude =
   | { kind: "map"; relations: Record<string, ParsedIncludeRelation> };
 
 export type ParsedPagination =
-  | { kind: "all" }
-  | { kind: "first" }
-  | { kind: "page"; page: number; perPage: number };
+  | { kind: "all"; showNumber: boolean; showTotal: boolean }
+  | { kind: "first"; showNumber: boolean; showTotal: boolean }
+  | {
+      kind: "page";
+      page: number;
+      perPage: number;
+      showNumber: boolean;
+      showTotal: boolean;
+    };
+
+/**
+ * Shape returned by `engine.run` on executable adapters (e.g. TypeORM).
+ * `current` / `total` are populated according to `pagination.showNumber` /
+ * `pagination.showTotal` on the parsed query (both default to `true`).
+ */
+export interface PaginatedResult<T> {
+  data: T[];
+  /** Rows in this page. Present when `pagination.showNumber` is true. */
+  current?: number;
+  /**
+   * Rows matching the query without pagination. Present when
+   * `pagination.showTotal` is true. Sourced from `getManyAndCount`.
+   */
+  total?: number;
+}
 
 export interface ParsedQuery {
   rootEntity: string;

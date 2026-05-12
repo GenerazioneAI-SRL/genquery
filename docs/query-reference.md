@@ -308,7 +308,7 @@ Relations referenced in `searchBy` are automatically joined (for filtering); `in
 |-------|----------|
 | `"all"` (default) | No limit |
 | `"first"` | Returns first match (skip 0, take 1) |
-| `{ page, perPage }` | Page-based |
+| `{ page, perPage, showNumber?, showTotal? }` | Page-based, with output-shape flags |
 
 ```json
 { "pagination": { "page": 2, "perPage": 25 } }
@@ -316,4 +316,33 @@ Relations referenced in `searchBy` are automatically joined (for filtering); `in
 
 `page` defaults to `0`, `perPage` defaults to `20`.
 
-`"first"` is equivalent to `{ page: 0, perPage: 1 }`. It sets `skip(0).take(1)` on the builder — whether you call `.getOne()` or `.getMany()` after is up to you.
+`"first"` is equivalent to `{ page: 0, perPage: 1 }`. It sets `skip(0).take(1)` on the builder.
+
+### Output-shape flags
+
+`engine.run` returns `{ data, current?, total? }`. `showNumber` and `showTotal` (both default to `true`) decide which counts are populated:
+
+| Flag | Default | Effect on `engine.run` |
+|------|---------|-------------------------|
+| `showNumber` | `true` | Include `current` (rows in this page) |
+| `showTotal`  | `true` | Include `total` (rows matching the query without pagination); uses `getManyAndCount` under the hood |
+
+```json
+{ "pagination": { "page": 0, "perPage": 20, "showTotal": false } }
+```
+
+Disabling `showTotal` skips the extra `SELECT COUNT(*)` round-trip. Both flags appear on every parsed pagination kind (`"all"`, `"first"`, `"page"`) so the executed result shape is uniform regardless of mode.
+
+### Result shape
+
+```typescript
+interface PaginatedResult<T> {
+  data: T[];
+  current?: number;   // present when showNumber is true
+  total?:   number;   // present when showTotal is true
+}
+```
+
+```typescript
+const { data, current, total } = await engine.run(input, qb);
+```

@@ -7,8 +7,12 @@ interface Adapter<TTarget, TResult> {
   readonly name: string;
   readonly schema: Schema;
   apply(target: TTarget, query: ParsedQuery): TResult;
+  getRootEntity?(target: TTarget): string | undefined;
+  execute?(target: TTarget, query: ParsedQuery): Promise<PaginatedResult<unknown>>;
 }
 ```
+
+`execute` is what `engine.run` calls. Implement it when your target is something you can run end-to-end (e.g. a query builder) so callers get `{ data, current?, total? }` directly. Pure args-builder adapters (Prisma, args-only Mongo) leave it unset and callers use `engine.parse` + `engine.runParsed` to obtain the args object.
 
 ## Minimal example
 
@@ -107,9 +111,11 @@ import { GenQueryEngine } from "@generazioneai/genquery";
 const adapter = new PrismaAdapter(schema);
 const engine  = new GenQueryEngine({ adapter });   // schema is read from the adapter
 
-// target is undefined because the Prisma adapter doesn't need a query builder
-const args = engine.run(input, "User", undefined);
-const users = await prisma.user.findMany(args);
+// PrismaAdapter doesn't implement execute(), so use parse + runParsed to get
+// the args object. engine.run would throw at runtime for this adapter.
+const parsed = engine.parse(input, "User");
+const args   = engine.runParsed(parsed, undefined);
+const users  = await prisma.user.findMany(args);
 ```
 
 ## Package structure
@@ -143,9 +149,11 @@ query.searchBy?.or          // ParsedSearchBy[]
 cond.kind  // "string" | "number" | "bool" | "date" | "relation"
 
 // Pagination
-query.pagination.kind  // "all" | "first" | "page"
-query.pagination.page      // number (if kind === "page")
-query.pagination.perPage   // number (if kind === "page")
+query.pagination.kind        // "all" | "first" | "page"
+query.pagination.page        // number (if kind === "page")
+query.pagination.perPage     // number (if kind === "page")
+query.pagination.showNumber  // boolean (always present, default true)
+query.pagination.showTotal   // boolean (always present, default true)
 
 // Select
 query.select.kind   // "all" | "none" | "fields"

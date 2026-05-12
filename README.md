@@ -29,7 +29,7 @@ const engine = createTypeORMEngine(dataSource);
 // 3. Run a query from a request body
 const qb = dataSource.getRepository(User).createQueryBuilder("User");
 
-const result = engine.run(
+const { data, current, total } = await engine.run(
   {
     searchBy: { firstName: "mario" },
     orderBy:  "createdAt",
@@ -37,11 +37,22 @@ const result = engine.run(
   },
   qb,   // target QueryBuilder — entity name + entity type both read from this
 );
-
-const users = await result.getMany();
+// data:    User[]
+// current: data.length   (omitted if pagination.showNumber === false)
+// total:   match count   (via getManyAndCount; omitted if pagination.showTotal === false)
 ```
 
-`createTypeORMEngine` is a thin wrapper around `schemaFromTypeORM` → `new TypeORMAdapter` → `new GenQueryEngine`. The root entity (`"User"` in this case) is derived from `qb.expressionMap.mainAlias.metadata.name` at runtime, and the TS entity type is read from `SelectQueryBuilder<User>`. If you need to override or your adapter can't introspect, the 3-arg form still works: `engine.run(input, "User", qb)`.
+`engine.run` is async and returns `{ data, current?, total? }`. `current` and `total` are populated according to `pagination.showNumber` / `pagination.showTotal` (both default to `true`); setting `showTotal: false` skips the extra `SELECT COUNT(*)`.
+
+`createTypeORMEngine` is a thin wrapper around `schemaFromTypeORM` → `new TypeORMAdapter` → `new GenQueryEngine`. The root entity (`"User"` in this case) is derived from `qb.expressionMap.mainAlias.metadata.name` at runtime, and the TS entity type is read from `SelectQueryBuilder<User>`. If you need to override or your adapter can't introspect, the 3-arg form still works: `await engine.run(input, "User", qb)`.
+
+If you need raw `SelectQueryBuilder` access (custom chaining, `.getRawMany()`, transactions), parse separately and call `runParsed`, which returns the mutated builder without executing:
+
+```typescript
+const parsed = engine.parse(input, "User");
+const built  = engine.runParsed(parsed, qb);
+const rows   = await built.getRawMany();
+```
 
 Need fine-grained control? You can still build it manually:
 
@@ -109,7 +120,7 @@ The entity type is inferred automatically from the `target` argument when it has
 const qb = dataSource.getRepository(User).createQueryBuilder("User");
 // qb is SelectQueryBuilder<User> — entity type flows into the call below
 
-engine.run(
+await engine.run(
   {
     searchBy: {
       firstName: "mario",                              // OK
@@ -150,15 +161,15 @@ Full query language reference: [docs/query-reference.md](docs/query-reference.md
 ```typescript
 const engine = new GenQueryEngine({ adapter });   // schema comes from the adapter
 
-// parse + apply (rootEntity derived from target when the adapter supports it)
-engine.run(input, target);
+// parse + apply + execute → Promise<{ data, current?, total? }>
+await engine.run(input, target);
 // or explicit rootEntity:
-engine.run(input, rootEntity, target);
+await engine.run(input, rootEntity, target);
 
 // parse only (requires explicit rootEntity — no target to infer from)
 const parsed = engine.parse(input, rootEntity);
 
-// apply a previously parsed query
+// apply a previously parsed query without executing (returns the raw target)
 engine.runParsed(parsed, target);
 ```
 
@@ -170,7 +181,7 @@ Parse failures throw `QueryValidationError` with a `path` field pointing to the 
 import { QueryValidationError } from "@generazioneai/genquery";
 
 try {
-  engine.run(input, "User", qb);
+  await engine.run(input, "User", qb);
 } catch (e) {
   if (e instanceof QueryValidationError) {
     console.error(e.path, e.message);

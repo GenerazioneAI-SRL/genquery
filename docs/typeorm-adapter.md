@@ -66,12 +66,21 @@ Use a custom prefix if you mix genquery parameters with hand-written parameters 
 Adapter<SelectQueryBuilder<ObjectLiteral>, SelectQueryBuilder<ObjectLiteral>>
 ```
 
-`TypeORMAdapter.apply()` mutates the `SelectQueryBuilder` you pass in and returns it. You chain `.getMany()`, `.getOne()`, `.getManyAndCount()`, etc. after:
+The TypeORM adapter implements both `apply` (sync, mutates the builder) and `execute` (async, applies + runs the query). `engine.run` delegates to `execute` and returns `{ data, current?, total? }`:
 
 ```typescript
 const qb = repository.createQueryBuilder("User");
-const result = engine.run(input, "User", qb);
-const [users, count] = await result.getManyAndCount();
+const { data, current, total } = await engine.run(input, "User", qb);
+```
+
+The result shape follows `pagination.showNumber` / `pagination.showTotal` (both default to `true`). When `showTotal` is `true`, the adapter uses `qb.getManyAndCount()` (one extra `SELECT COUNT(*)` round-trip); otherwise it uses `qb.getMany()` and `total` is omitted.
+
+If you need the raw `SelectQueryBuilder` — for `.getOne()`, `.getRawMany()`, transactions, or hand-written chaining — use `runParsed`, which returns the mutated builder without executing:
+
+```typescript
+const parsed = engine.parse(input, "User");
+const built  = engine.runParsed(parsed, qb);
+const [users, count] = await built.getManyAndCount();
 ```
 
 ## Execution order
@@ -122,11 +131,12 @@ A relation joined only for filtering (`searchBy`) is joined with `leftJoin` (no 
 
 ## Debugging
 
-To inspect the generated SQL before execution:
+To inspect the generated SQL before execution, use `runParsed` (which doesn't execute) instead of `run`:
 
 ```typescript
-const qb = repository.createQueryBuilder("User");
-engine.run(input, "User", qb);
+const qb     = repository.createQueryBuilder("User");
+const parsed = engine.parse(input, "User");
+engine.runParsed(parsed, qb);
 console.log(qb.getSql());
 console.log(qb.getParameters());
 ```

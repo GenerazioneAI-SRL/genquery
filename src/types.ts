@@ -245,6 +245,10 @@ export type SelectInput<T = unknown> = IsLoose<T> extends true
 export interface PaginationObjectInput {
   page?: number;
   perPage?: number;
+  /** Include `current` (rows in this page) in the executed result. Default `true`. */
+  showNumber?: boolean;
+  /** Include `total` (rows matching the query without pagination) in the executed result. Default `true`. */
+  showTotal?: boolean;
 }
 export type PaginationInput = "all" | "first" | PaginationObjectInput;
 

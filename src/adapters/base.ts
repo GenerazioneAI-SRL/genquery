@@ -1,4 +1,4 @@
-import type { ParsedQuery } from "../parsed";
+import type { PaginatedResult, ParsedQuery } from "../parsed";
 import type { Schema } from "../schema";
 
 /**
@@ -32,4 +32,14 @@ export interface Adapter<TTarget, TResult> {
    * throw a helpful error.
    */
   getRootEntity?(target: TTarget): string | undefined;
+
+  /**
+   * Run the query end-to-end and return `{ data, current?, total? }` shaped
+   * by `pagination.showNumber` / `pagination.showTotal`. Implemented by
+   * adapters whose target can be executed directly (e.g. a TypeORM query
+   * builder). `engine.run` delegates to this when present; pure args-builder
+   * adapters (Prisma, args-only Mongo) leave it unset and callers consume
+   * the apply result themselves.
+   */
+  execute?(target: TTarget, query: ParsedQuery): Promise<PaginatedResult<unknown>>;
 }

@@ -1,6 +1,6 @@
 import type { Adapter } from "./adapters/base";
 import { parseQuery } from "./parser";
-import type { ParsedQuery } from "./parsed";
+import type { PaginatedResult, ParsedQuery } from "./parsed";
 import type { Schema } from "./schema";
 import type { GenQueryInput } from "./types";
 
@@ -63,7 +63,14 @@ export class GenQueryEngine<TTarget, TResult> {
   }
 
   /**
-   * Parse and apply.
+   * Parse, apply, and execute the query against `target`. Returns
+   * `{ data, current?, total? }` shaped by `pagination.showNumber` /
+   * `pagination.showTotal` (both default to `true`).
+   *
+   * Requires the adapter to implement `execute` (the TypeORM adapter does).
+   * Pure args-builder adapters (Prisma, etc.) should use `parse` +
+   * `runParsed` instead — `runParsed` is sync and returns the adapter's raw
+   * `TResult` (the args object or query builder) without executing.
    *
    * The entity type is inferred from the `target` argument when it has a
    * recognizable shape (e.g. a TypeORM `SelectQueryBuilder<User>`). When the
@@ -74,17 +81,23 @@ export class GenQueryEngine<TTarget, TResult> {
   run<X extends TTarget>(
     input: GenQueryInput<InferEntityFromTarget<X>>,
     target: X,
-  ): TResult;
+  ): Promise<PaginatedResult<InferEntityFromTarget<X>>>;
   run<X extends TTarget>(
     input: GenQueryInput<InferEntityFromTarget<X>>,
     rootEntity: string,
     target: X,
-  ): TResult;
-  run(
+  ): Promise<PaginatedResult<InferEntityFromTarget<X>>>;
+  async run(
     input: GenQueryInput,
     arg2: string | TTarget,
     arg3?: TTarget,
-  ): TResult {
+  ): Promise<PaginatedResult<unknown>> {
+    if (!this.adapter.execute) {
+      throw new Error(
+        `GenQueryEngine.run: adapter '${this.adapter.name}' does not implement execute(). ` +
+          "Use engine.parse + engine.runParsed instead.",
+      );
+    }
     let rootEntity: string;
     let target: TTarget;
     if (typeof arg2 === "string") {
@@ -103,10 +116,14 @@ export class GenQueryEngine<TTarget, TResult> {
       rootEntity = derived;
     }
     const parsed = parseQuery(input, this.schema, rootEntity);
-    return this.adapter.apply(target, parsed);
+    return this.adapter.execute(target, parsed);
   }
 
-  /** Apply a previously parsed query. */
+  /**
+   * Apply a previously parsed query and return the adapter's raw target
+   * (mutated query builder, args object, …) without executing. Use this when
+   * you want full control over how the query is run.
+   */
   runParsed(parsed: ParsedQuery, target: TTarget): TResult {
     return this.adapter.apply(target, parsed);
   }

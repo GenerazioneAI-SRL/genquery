@@ -1,5 +1,5 @@
 import { Brackets, type ObjectLiteral, type SelectQueryBuilder } from "typeorm";
-import type { ParsedQuery, ParsedSelect } from "../../parsed";
+import type { PaginatedResult, ParsedQuery, ParsedSelect } from "../../parsed";
 import {
   type EntityDefinition,
   type Schema,
@@ -94,6 +94,33 @@ export class TypeORMAdapter
     this.applyPagination(qb, query.pagination);
 
     return qb;
+  }
+
+  /**
+   * Apply the parsed query to `qb`, run it, and return `{ data, current?,
+   * total? }` shaped by `pagination.showNumber` / `pagination.showTotal`
+   * (both default to true). Uses `getManyAndCount` when a total is needed,
+   * `getMany` otherwise. This is what `engine.run` invokes for TypeORM.
+   */
+  async execute<T extends ObjectLiteral>(
+    qb: SelectQueryBuilder<T>,
+    query: ParsedQuery,
+  ): Promise<PaginatedResult<T>> {
+    this.apply(qb, query);
+    const { showNumber, showTotal } = query.pagination;
+
+    let data: T[];
+    let total: number | undefined;
+    if (showTotal) {
+      [data, total] = await qb.getManyAndCount();
+    } else {
+      data = await qb.getMany();
+    }
+
+    const result: PaginatedResult<T> = { data };
+    if (showNumber) result.current = data.length;
+    if (showTotal) result.total = total;
+    return result;
   }
 
   private applyRootSelect<T extends ObjectLiteral>(

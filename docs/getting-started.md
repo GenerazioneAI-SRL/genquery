@@ -125,8 +125,8 @@ export async function listUsers(req: Request, res: Response) {
   const qb = userRepository.createQueryBuilder("User");
 
   try {
-    const result = engine.run(req.body, "User", qb);
-    res.json(await result.getMany());
+    const { data, current, total } = await engine.run(req.body, "User", qb);
+    res.json({ data, current, total });
   } catch (e) {
     if (e instanceof QueryValidationError) {
       res.status(400).json({ error: e.message, path: e.path });
@@ -137,7 +137,15 @@ export async function listUsers(req: Request, res: Response) {
 }
 ```
 
-The `req.body` is the `GenQueryInput` the frontend sends. The engine validates it, rejects unknown fields, and builds the query.
+The `req.body` is the `GenQueryInput` the frontend sends. The engine validates it, rejects unknown fields, builds the query, executes it, and returns `{ data, current?, total? }`. `current` / `total` are included when `pagination.showNumber` / `pagination.showTotal` are `true` (both default to `true`); set `showTotal: false` in the input to skip the extra `SELECT COUNT(*)` round-trip.
+
+Need the raw `SelectQueryBuilder` instead (custom chaining, `.getRawMany()`, transactions)? Use `runParsed`:
+
+```typescript
+const parsed = engine.parse(req.body, "User");
+const built  = engine.runParsed(parsed, qb);
+res.json(await built.getMany());
+```
 
 ## First query
 

@@ -538,20 +538,40 @@ function parseInclude(
   return { kind: "map", relations };
 }
 
+function parseShowFlag(
+  raw: unknown,
+  key: "showNumber" | "showTotal",
+  path: string,
+): boolean {
+  if (raw === undefined) return true;
+  if (typeof raw !== "boolean") {
+    throw new QueryValidationError(
+      `pagination.${key} must be a boolean`,
+      `${path}.${key}`,
+    );
+  }
+  return raw;
+}
+
 function parsePagination(
   raw: PaginationInput,
   path: string,
 ): ParsedPagination {
-  if (raw === "all") return { kind: "all" };
-  if (raw === "first") return { kind: "first" };
+  if (raw === "all") {
+    return { kind: "all", showNumber: true, showTotal: true };
+  }
+  if (raw === "first") {
+    return { kind: "first", showNumber: true, showTotal: true };
+  }
   if (!isPlainObject(raw)) {
     throw new QueryValidationError(
       "pagination must be 'all', 'first', or an object",
       path,
     );
   }
-  const pageRaw = (raw as Record<string, unknown>).page;
-  const perPageRaw = (raw as Record<string, unknown>).perPage;
+  const obj = raw as Record<string, unknown>;
+  const pageRaw = obj.page;
+  const perPageRaw = obj.perPage;
   const page = pageRaw === undefined ? 0 : Number(pageRaw);
   const perPage = perPageRaw === undefined ? 20 : Number(perPageRaw);
   if (!Number.isInteger(page) || page < 0) {
@@ -566,7 +586,9 @@ function parsePagination(
       `${path}.perPage`,
     );
   }
-  return { kind: "page", page, perPage };
+  const showNumber = parseShowFlag(obj.showNumber, "showNumber", path);
+  const showTotal = parseShowFlag(obj.showTotal, "showTotal", path);
+  return { kind: "page", page, perPage, showNumber, showTotal };
 }
 
 // Avoid leaning on a circular type import in parseLeafCondition's signature.
@@ -591,7 +613,7 @@ export function parseQuery(
     rootEntity,
     include: { kind: "none" },
     select: { kind: "all" },
-    pagination: { kind: "all" },
+    pagination: { kind: "all", showNumber: true, showTotal: true },
   };
 
   if (input.orderBy !== undefined) {

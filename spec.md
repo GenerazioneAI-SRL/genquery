@@ -216,6 +216,17 @@ A string is searched against a specified regex. The regex is in the language nat
 	pagination: @"all" | "first" | { // using first makes this a "findFirst" type query, equivalent to page: 0 and perPage: 1.
 		page: int | @0,
 		perPage: int | @20,
+
+		// Output-shape flags. When the engine executes the query (the default
+		// path for `engine.run`), these decide what `{ data, current?, total? }`
+		// contains:
+		//
+		//   showNumber: bool | @true,  // include `current` (rows in this page)
+		//   showTotal:  bool | @true,  // include `total`   (rows matching the
+		//                              //   query without pagination — uses
+		//                              //   getManyAndCount on TypeORM)
+		showNumber: false | @true,
+		showTotal:  false | @true,
 	}
 }
 ```
