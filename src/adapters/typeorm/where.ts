@@ -1,4 +1,5 @@
-import { Brackets, type WhereExpressionBuilder } from "typeorm";
+import { Brackets, type DataSource, type WhereExpressionBuilder } from "typeorm";
+import { QueryValidationError } from "../../errors";
 import type {
   ParsedDateSearch,
   ParsedFieldCondition,
@@ -21,6 +22,10 @@ export interface WhereCtx {
   currentAlias: string;
   /** Logical path from root, used to look up nested relation aliases. */
   currentPath: string;
+  /** Entity name (as known to TypeORM metadata) at the current scope. */
+  currentEntity: string;
+  /** TypeORM DataSource / Connection — used to resolve relation metadata for every/none subqueries. */
+  connection: DataSource;
 }
 
 interface Fragment {
@@ -167,29 +172,166 @@ function applyCondition(
   isFirst: boolean,
 ): void {
   if (cond.kind === "relation") {
-    const path = joinPath(ctx.currentPath, cond.field);
-    const relAlias = ctx.aliases.get(path);
-    if (!relAlias) {
-      throw new Error(
-        `genquery/typeorm: missing join for relation path '${path}'`,
+    if (cond.op === "some") {
+      const path = joinPath(ctx.currentPath, cond.field);
+      const relAlias = ctx.aliases.get(path);
+      if (!relAlias) {
+        throw new Error(
+          `genquery/typeorm: missing join for relation path '${path}'`,
+        );
+      }
+      const subCtx: WhereCtx = {
+        ...ctx,
+        currentAlias: relAlias,
+        currentPath: path,
+        currentEntity: cond.targetEntity,
+      };
+      const brackets = new Brackets((sub) =>
+        applySearchByInside(sub, cond.nested, subCtx),
       );
+      if (isFirst) qb.where(brackets);
+      else qb.andWhere(brackets);
+      return;
     }
-    const subCtx: WhereCtx = {
-      ...ctx,
-      currentAlias: relAlias,
-      currentPath: path,
-    };
-    const brackets = new Brackets((sub) =>
-      applySearchByInside(sub, cond.nested, subCtx),
-    );
-    if (isFirst) qb.where(brackets);
-    else qb.andWhere(brackets);
+    // every / none → EXISTS / NOT EXISTS subquery
+    const fragment = buildExistsSubquery(cond, ctx);
+    Object.assign(ctx.paramBag, fragment.params);
+    if (isFirst) qb.where(fragment.sql, fragment.params);
+    else qb.andWhere(fragment.sql, fragment.params);
     return;
   }
   const fragment = buildLeaf(cond, ctx);
   Object.assign(ctx.paramBag, fragment.params);
   if (isFirst) qb.where(fragment.sql, fragment.params);
   else qb.andWhere(fragment.sql, fragment.params);
+}
+
+/**
+ * Build a `[NOT] EXISTS (SELECT 1 FROM target WHERE ...)` fragment for
+ * `every` / `none` relation conditions. Resolves FK columns through TypeORM's
+ * own EntityMetadata so we don't reinvent relation introspection.
+ *
+ * Restrictions (Phase 1):
+ *  - One-to-many and many-to-one (and one-to-one) relations are supported.
+ *  - Many-to-many goes through a junction table and isn't supported here yet.
+ *  - The nested `searchBy` must contain only leaf conditions and OR — nested
+ *    relation filters inside `every`/`none` are not yet supported.
+ */
+function buildExistsSubquery(
+  cond: Extract<ParsedFieldCondition, { kind: "relation" }>,
+  ctx: WhereCtx,
+): Fragment {
+  const parentMeta = ctx.connection.getMetadata(ctx.currentEntity);
+  const relMeta = parentMeta.relations.find(
+    (r) => r.propertyName === cond.field,
+  );
+  if (!relMeta) {
+    throw new Error(
+      `genquery/typeorm: no TypeORM relation metadata for '${ctx.currentEntity}.${cond.field}'`,
+    );
+  }
+  if (relMeta.isManyToMany) {
+    throw new QueryValidationError(
+      `Relation '${cond.field}' is many-to-many; '${cond.op}' filtering isn't supported yet for M2M relations`,
+      cond.field,
+    );
+  }
+
+  const targetMeta = relMeta.inverseEntityMetadata;
+  const targetTable = targetMeta.tableName;
+  const subAlias = `${ctx.currentAlias}__${cond.field}__sub`;
+
+  // Determine the join condition between parent alias and the subquery alias.
+  let joinSql: string;
+  if (relMeta.joinColumns.length > 0) {
+    // Owning side (many-to-one / owning one-to-one): FK column lives on the
+    // parent table, references target's referenced column.
+    const fk = relMeta.joinColumns[0];
+    const parentCol = fk.databaseName;
+    const targetCol = fk.referencedColumn?.databaseName
+      ?? targetMeta.primaryColumns[0].databaseName;
+    joinSql = `"${subAlias}"."${targetCol}" = "${ctx.currentAlias}"."${parentCol}"`;
+  } else if (relMeta.inverseRelation) {
+    // Inverse side (one-to-many / inverse one-to-one): FK lives on the target.
+    const fk = relMeta.inverseRelation.joinColumns[0];
+    if (!fk) {
+      throw new Error(
+        `genquery/typeorm: cannot resolve foreign key for relation '${cond.field}'`,
+      );
+    }
+    const targetFk = fk.databaseName;
+    const parentPk = fk.referencedColumn?.databaseName
+      ?? parentMeta.primaryColumns[0].databaseName;
+    joinSql = `"${subAlias}"."${targetFk}" = "${ctx.currentAlias}"."${parentPk}"`;
+  } else {
+    throw new Error(
+      `genquery/typeorm: cannot resolve join columns for relation '${cond.field}'`,
+    );
+  }
+
+  const subCtx: WhereCtx = {
+    ...ctx,
+    currentAlias: subAlias,
+    currentPath: joinPath(ctx.currentPath, cond.field),
+    currentEntity: cond.targetEntity,
+  };
+  const nestedFrag = buildSearchByFragment(cond.nested, subCtx);
+
+  let whereContent = joinSql;
+  if (nestedFrag.sql) {
+    const inner =
+      cond.op === "every" ? `NOT (${nestedFrag.sql})` : nestedFrag.sql;
+    whereContent = `${joinSql} AND ${inner}`;
+  } else if (cond.op === "every") {
+    // every(no conditions) ≡ "no related rows that violate nothing", i.e. true.
+    // Special-case: no WHERE on the nested side means `every` is trivially
+    // satisfied (no row can violate an empty predicate).
+    return { sql: "1=1", params: {} };
+  }
+
+  const exists = cond.op === "some" ? "EXISTS" : "NOT EXISTS";
+  const sql = `${exists} (SELECT 1 FROM "${targetTable}" "${subAlias}" WHERE ${whereContent})`;
+  return { sql, params: nestedFrag.params };
+}
+
+/**
+ * Build a SQL fragment representing an entire ParsedSearchBy (conditions
+ * AND-ed together, with the OR group AND-ed in). Used inside EXISTS
+ * subqueries where we need raw SQL rather than a builder mutation.
+ *
+ * Throws if a nested relation appears — those need their own EXISTS subquery
+ * with metadata resolution, which Phase 1 doesn't support inside every/none.
+ */
+function buildSearchByFragment(
+  searchBy: ParsedSearchBy,
+  ctx: WhereCtx,
+): Fragment {
+  const andParts: string[] = [];
+  const params: Record<string, unknown> = {};
+
+  for (const cond of searchBy.conditions) {
+    if (cond.kind === "relation") {
+      throw new QueryValidationError(
+        `Nested relation filter '${cond.field}' inside 'every'/'none' is not supported in this version`,
+        joinPath(ctx.currentPath, cond.field),
+      );
+    }
+    const frag = buildLeaf(cond, ctx);
+    andParts.push(frag.sql);
+    Object.assign(params, frag.params);
+  }
+
+  if (searchBy.or.length > 0) {
+    const orParts: string[] = [];
+    for (const sub of searchBy.or) {
+      const subFrag = buildSearchByFragment(sub, ctx);
+      if (subFrag.sql) orParts.push(`(${subFrag.sql})`);
+      Object.assign(params, subFrag.params);
+    }
+    if (orParts.length > 0) andParts.push(`(${orParts.join(" OR ")})`);
+  }
+
+  return { sql: andParts.join(" AND "), params };
 }
 
 /**

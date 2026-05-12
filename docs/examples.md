@@ -272,7 +272,7 @@ Active users who are either named "mario" or on the "alpha" team:
 
 ## Filter by relation
 
-Users who have at least one published post with "typescript" in the title:
+Users who have at least one published post with "typescript" in the title (implicit `some`):
 
 ```json
 {
@@ -280,6 +280,39 @@ Users who have at least one published post with "typescript" in the title:
     "posts": {
       "published": true,
       "title": "typescript"
+    }
+  }
+}
+```
+
+Users whose every post is published:
+
+```json
+{
+  "searchBy": {
+    "posts": { "every": { "published": true } }
+  }
+}
+```
+
+Users with no draft posts at all:
+
+```json
+{
+  "searchBy": {
+    "posts": { "none": { "draft": true } }
+  }
+}
+```
+
+Combine operators on the same relation (AND-ed):
+
+```json
+{
+  "searchBy": {
+    "posts": {
+      "some":  { "tags": { "name": "featured" } },
+      "every": { "published": true }
     }
   }
 }

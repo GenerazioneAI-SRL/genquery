@@ -119,7 +119,7 @@ Anything outside the allowlist is rejected. No object form. For "any of N", use 
 
 ### Relation fields
 
-Nested `searchBy` against the related entity. Matches rows with at least one related record satisfying the filter:
+Short form — implicit `some` (matches if at least one related row satisfies):
 
 ```json
 {
@@ -130,7 +130,25 @@ Nested `searchBy` against the related entity. Matches rows with at least one rel
 }
 ```
 
-The nested object follows all the same rules — including further nested relations and OR.
+Explicit cardinality operators:
+
+```json
+{
+  "posts": {
+    "some":  { "title": "typescript" },
+    "every": { "published": true },
+    "none":  { "draft": true }
+  }
+}
+```
+
+| Operator | Meaning |
+|----------|---------|
+| `some` (or short form) | At least one related row matches |
+| `every` | All related rows match (vacuously true if there are no rows) |
+| `none` | No related row matches |
+
+Multiple operators on the same relation are AND-ed. Many-to-many relations only support the short form / `some` in this version. Nested relation filters inside `every` / `none` aren't supported yet.
 
 ### OR
 

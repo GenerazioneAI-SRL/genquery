@@ -74,6 +74,8 @@ export class TypeORMAdapter
         paramBag: {},
         currentAlias: aliases.root(),
         currentPath: "",
+        currentEntity: query.rootEntity,
+        connection: qb.connection,
       };
       qb.andWhere(
         new Brackets((sub) => applySearchByInside(sub, query.searchBy!, ctx)),

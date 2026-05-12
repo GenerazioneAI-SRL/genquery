@@ -174,6 +174,38 @@ function parseDateSearch(raw: unknown, path: string): ParsedDateSearch {
   );
 }
 
+const RELATION_OPS = ["some", "every", "none"] as const;
+type RelationOpName = (typeof RELATION_OPS)[number];
+
+/**
+ * Detect the explicit-wrapper form for a relation filter and split it into one
+ * entry per cardinality op. Returns `null` if the value is a plain SearchBy
+ * (implicit `some`). Throws if the wrapper contains unknown keys.
+ */
+function parseRelationWrapper(
+  value: unknown,
+): Array<{ op: RelationOpName; nestedValue: unknown }> | null {
+  if (!isPlainObject(value)) return null;
+  const keys = Object.keys(value);
+  const hasOp = keys.some((k) => (RELATION_OPS as readonly string[]).includes(k));
+  if (!hasOp) return null;
+  const unknown = keys.find(
+    (k) => !(RELATION_OPS as readonly string[]).includes(k),
+  );
+  if (unknown !== undefined) {
+    throw new QueryValidationError(
+      `Unknown relation filter operator '${unknown}'. Expected 'some', 'every', or 'none'.`,
+      unknown,
+    );
+  }
+  const result: Array<{ op: RelationOpName; nestedValue: unknown }> = [];
+  for (const op of RELATION_OPS) {
+    const nestedValue = (value as Record<string, unknown>)[op];
+    if (nestedValue !== undefined) result.push({ op, nestedValue });
+  }
+  return result;
+}
+
 function parseSearchBy(
   raw: unknown,
   schema: Schema,
@@ -215,12 +247,31 @@ function parseSearchBy(
     }
 
     if (relationDef) {
-      conditions.push({
-        kind: "relation",
-        field: key,
-        targetEntity: relationDef.target,
-        nested: parseSearchBy(value, schema, relationDef.target, fieldPath),
-      });
+      const wrapperOps = parseRelationWrapper(value);
+      if (wrapperOps) {
+        for (const { op, nestedValue } of wrapperOps) {
+          conditions.push({
+            kind: "relation",
+            field: key,
+            targetEntity: relationDef.target,
+            op,
+            nested: parseSearchBy(
+              nestedValue,
+              schema,
+              relationDef.target,
+              `${fieldPath}.${op}`,
+            ),
+          });
+        }
+      } else {
+        conditions.push({
+          kind: "relation",
+          field: key,
+          targetEntity: relationDef.target,
+          op: "some",
+          nested: parseSearchBy(value, schema, relationDef.target, fieldPath),
+        });
+      }
       continue;
     }
 

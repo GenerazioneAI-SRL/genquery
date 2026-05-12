@@ -135,8 +135,18 @@ A string is searched against a specified regex. The regex is in the language nat
 
 		// relations
 
+		// Implicit `some` — matches if at least one related row satisfies the filter.
 		relationName: {
 			otherField: "lorem ipsum"
+		},
+
+		// Explicit cardinality operators. `some` / `every` / `none` can appear
+		// alone or combined (multiple ops are AND-ed). Equivalent to Prisma's
+		// relation filters.
+		relationName: {
+			some:  { otherField: "x" },
+			every: { published: true },
+			none:  { draft: true }
 		},
 
 		// bool

@@ -30,6 +30,8 @@ export interface ParsedEnumSearch {
   value: string;
 }
 
+export type RelationOp = "some" | "every" | "none";
+
 export type ParsedFieldCondition =
   | { kind: "string"; field: string; search: ParsedStringSearch }
   | { kind: "number"; field: string; search: ParsedNumberSearch }
@@ -40,6 +42,7 @@ export type ParsedFieldCondition =
       kind: "relation";
       field: string;
       targetEntity: string;
+      op: RelationOp;
       nested: ParsedSearchBy;
     };
 

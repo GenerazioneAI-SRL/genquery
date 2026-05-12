@@ -148,6 +148,9 @@ function walkSearchBy(
 ): void {
   for (const cond of searchBy.conditions) {
     if (cond.kind !== "relation") continue;
+    // `every` / `none` are translated to EXISTS subqueries by the WHERE
+    // builder — no top-level join needed (and the join would be wrong).
+    if (cond.op !== "some") continue;
     const path = parentPath ? `${parentPath}.${cond.field}` : cond.field;
     const plan = upsert(
       path,

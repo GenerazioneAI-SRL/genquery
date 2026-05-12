@@ -132,7 +132,7 @@ Date range (`before` and/or `after`, both optional):
 
 ### Relation fields
 
-Filter by fields on a related entity (single level per condition, recursively nesting is supported):
+Filter by fields on a related entity. The short form is "at least one related row matches" (implicit `some`):
 
 ```json
 {
@@ -144,7 +144,31 @@ Filter by fields on a related entity (single level per condition, recursively ne
 }
 ```
 
-The relation must be declared in the schema. The nested object follows the same rules as a top-level `searchBy`.
+Use explicit cardinality operators (`some` / `every` / `none`) for finer control. Multiple operators on the same relation are AND-ed:
+
+```json
+{
+  "searchBy": {
+    "posts": {
+      "some":  { "title": "typescript" },
+      "every": { "published": true },
+      "none":  { "draft": true }
+    }
+  }
+}
+```
+
+| Operator | SQL | Meaning |
+|----------|-----|---------|
+| `some` (or short form) | `EXISTS` via leftJoin | At least one related row matches |
+| `every` | `NOT EXISTS (... AND NOT (condition))` | All related rows match (vacuously true if no rows) |
+| `none` | `NOT EXISTS (... AND condition)` | No related row matches |
+
+The relation must be declared in the schema. The nested object follows the same rules as a top-level `searchBy` — including further nested `some` for the implicit-some path.
+
+**Limitations (Phase 1):**
+- `every` / `none` support one-to-many, many-to-one, and one-to-one relations. Many-to-many isn't supported yet — use `some` (short form) for M2M filtering.
+- Nested relation filters inside `every` or `none` (e.g. `posts.every(tags.some(...))`) are not yet supported; the parser will reject them with a clear error.
 
 ### OR conditions
 

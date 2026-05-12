@@ -90,9 +90,27 @@ type SearchValueFor<V> =
     :
   [NonNullable<V>] extends [number] ? NumberSearchInput :
   [NonNullable<V>] extends [boolean] ? BoolSearchInput :
-  [NonNullable<V>] extends [(infer U)[]] ? SearchByInput<NonNullable<U>> :
-  [NonNullable<V>] extends [object] ? SearchByInput<NonNullable<V>> :
+  [NonNullable<V>] extends [(infer U)[]] ? RelationFilterInput<NonNullable<U>> :
+  [NonNullable<V>] extends [object] ? RelationFilterInput<NonNullable<V>> :
   unknown;
+
+/**
+ * Wrapper for relation filters with explicit cardinality operators. The short
+ * form (a plain `SearchByInput`) is treated as implicit `some`.
+ *
+ *   posts: { title: "x" }                           // implicit some
+ *   posts: { some:  { title: "x" } }                // explicit some
+ *   posts: { every: { published: true } }
+ *   posts: { none:  { draft: true } }
+ *   posts: { some: { ... }, none: { ... } }         // multiple ops, AND-ed
+ */
+export type RelationFilterInput<T = unknown> =
+  | SearchByInput<T>
+  | {
+      some?: SearchByInput<T>;
+      every?: SearchByInput<T>;
+      none?: SearchByInput<T>;
+    };
 
 /** Keys of T whose value is a primitive (string/number/boolean/Date). */
 type FieldKeysOf<T> = {
