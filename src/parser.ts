@@ -17,9 +17,11 @@ import type {
 } from "./types";
 import type {
   ParsedDateSearch,
+  ParsedEmptyCheck,
   ParsedFieldCondition,
   ParsedInclude,
   ParsedIncludeRelation,
+  ParsedNullCheck,
   ParsedNumberSearch,
   ParsedOrderBy,
   ParsedPagination,
@@ -36,6 +38,51 @@ const STRING_MODES: readonly StringSearchMode[] = [
 ];
 
 const NUMERIC_OPS = [">", "<", ">=", "<=", "=="] as const;
+
+const PRESENCE_CHECK_KEYS = ["isNull", "isEmpty"] as const;
+type PresenceCheckKey = (typeof PRESENCE_CHECK_KEYS)[number];
+
+/**
+ * Detect a presence-check wrapper: a plain object whose keys are all drawn
+ * from `PRESENCE_CHECK_KEYS`. Returns `false` for objects mixing presence
+ * keys with other keys so per-type parsers can report a more specific error.
+ */
+function isPresenceCheckObject(
+  v: unknown,
+): v is Record<PresenceCheckKey, boolean> {
+  if (!isPlainObject(v)) return false;
+  const keys = Object.keys(v);
+  if (keys.length === 0) return false;
+  return keys.every((k) =>
+    (PRESENCE_CHECK_KEYS as readonly string[]).includes(k),
+  );
+}
+
+interface ParsedPresenceCheck {
+  null?: ParsedNullCheck;
+  empty?: ParsedEmptyCheck;
+}
+
+function parsePresenceCheck(
+  raw: Record<string, unknown>,
+  path: string,
+): ParsedPresenceCheck {
+  const out: ParsedPresenceCheck = {};
+  for (const key of PRESENCE_CHECK_KEYS) {
+    const v = raw[key];
+    if (v === undefined) continue;
+    if (typeof v !== "boolean") {
+      throw new QueryValidationError(
+        `Presence check: '${key}' must be a boolean`,
+        `${path}.${key}`,
+      );
+    }
+    if (key === "isNull") out.null = { isNull: v };
+    else out.empty = { isEmpty: v };
+  }
+  // isPresenceCheckObject guarantees at least one key, so `out` is non-empty.
+  return out;
+}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return (
@@ -242,7 +289,7 @@ function parseSearchBy(
     const relationDef = entity.relations?.[key];
 
     if (fieldDef) {
-      conditions.push(parseLeafCondition(key, fieldDef, value, fieldPath));
+      conditions.push(...parseLeafConditions(key, fieldDef, value, fieldPath));
       continue;
     }
 
@@ -284,7 +331,40 @@ function parseSearchBy(
   return { conditions, or };
 }
 
-function parseLeafCondition(
+function parseLeafConditions(
+  field: string,
+  def: FieldDefinition,
+  value: unknown,
+  path: string,
+): ParsedFieldCondition[] {
+  // Presence check (`isNull` on any primitive, `isEmpty` on strings only).
+  // Detect before per-type parsing so e.g. `{ isNull: true }` on a string
+  // field doesn't get rejected as a malformed StringSearchObjectInput.
+  // Both keys may coexist and AND together (the parsed output is one
+  // condition per key, and conditions naturally AND).
+  if (isPresenceCheckObject(value)) {
+    const parsed = parsePresenceCheck(value, path);
+    if (parsed.null && !def.nullable) {
+      throw new QueryValidationError(
+        `isNull is only valid on nullable fields; field '${field}' is not nullable`,
+        path,
+      );
+    }
+    if (parsed.empty && def.type !== "string") {
+      throw new QueryValidationError(
+        `isEmpty is only valid on string fields; field '${field}' is ${def.type}`,
+        path,
+      );
+    }
+    const out: ParsedFieldCondition[] = [];
+    if (parsed.null) out.push({ kind: "null", field, check: parsed.null });
+    if (parsed.empty) out.push({ kind: "empty", field, check: parsed.empty });
+    return out;
+  }
+  return [parseLeafConditionTyped(field, def, value, path)];
+}
+
+function parseLeafConditionTyped(
   field: string,
   def: FieldDefinition,
   value: unknown,

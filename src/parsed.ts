@@ -30,6 +30,16 @@ export interface ParsedEnumSearch {
   value: string;
 }
 
+export interface ParsedNullCheck {
+  /** `true` → IS NULL, `false` → IS NOT NULL. */
+  isNull: boolean;
+}
+
+export interface ParsedEmptyCheck {
+  /** `true` → IS NULL OR = '', `false` → IS NOT NULL AND <> ''. String-only. */
+  isEmpty: boolean;
+}
+
 export type RelationOp = "some" | "every" | "none";
 
 export type ParsedFieldCondition =
@@ -38,6 +48,8 @@ export type ParsedFieldCondition =
   | { kind: "bool"; field: string; search: ParsedBoolSearch }
   | { kind: "date"; field: string; search: ParsedDateSearch }
   | { kind: "enum"; field: string; search: ParsedEnumSearch }
+  | { kind: "null"; field: string; check: ParsedNullCheck }
+  | { kind: "empty"; field: string; check: ParsedEmptyCheck }
   | {
       kind: "relation";
       field: string;

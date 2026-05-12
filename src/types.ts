@@ -35,6 +35,28 @@ export interface NumericComparisonInput {
   value: number;
 }
 
+/**
+ * Null-presence check, valid on any primitive field type (string, number,
+ * boolean, date, enum).
+ *
+ *   { isNull: true }  → IS NULL
+ *   { isNull: false } → IS NOT NULL
+ */
+export interface NullCheckInput {
+  isNull: boolean;
+}
+
+/**
+ * Empty-presence check, valid only on string fields. "Empty" means NULL or
+ * the empty string `''`.
+ *
+ *   { isEmpty: true }  → (col IS NULL OR col = '')
+ *   { isEmpty: false } → (col IS NOT NULL AND col <> '')
+ */
+export interface EmptyCheckInput {
+  isEmpty: boolean;
+}
+
 export interface StringSearchObjectInput {
   mode?: StringSearchMode;
   contained?: boolean;
@@ -43,18 +65,22 @@ export interface StringSearchObjectInput {
   value: string;
 }
 
-export type StringSearchInput = string | StringSearchObjectInput;
+export type StringSearchInput =
+  | string
+  | StringSearchObjectInput
+  | NullCheckInput
+  | EmptyCheckInput;
 
 export interface DateRangeInput {
   before?: DateTimeInput;
   after?: DateTimeInput;
 }
 
-export type DateSearchInput = DateTimeInput | DateRangeInput;
+export type DateSearchInput = DateTimeInput | DateRangeInput | NullCheckInput;
 
-export type NumberSearchInput = number | NumericComparisonInput;
+export type NumberSearchInput = number | NumericComparisonInput | NullCheckInput;
 
-export type BoolSearchInput = boolean;
+export type BoolSearchInput = boolean | NullCheckInput;
 
 // ----------------------------------------------------------------------------
 // Type-level helpers: distinguish primitive fields from relation properties on
@@ -85,8 +111,8 @@ type SearchValueFor<V> =
   [NonNullable<V>] extends [Date] ? DateSearchInput :
   [NonNullable<V>] extends [string]
     ? [string] extends [NonNullable<V>]
-      ? StringSearchInput                              // V is exactly `string`
-      : NonNullable<V> | `${NonNullable<V> & string}` // enum members + matching string literals
+      ? StringSearchInput                                                 // V is exactly `string`
+      : NonNullable<V> | `${NonNullable<V> & string}` | NullCheckInput   // enum literals (no isEmpty: enums are not empty-stringable)
     :
   [NonNullable<V>] extends [number] ? NumberSearchInput :
   [NonNullable<V>] extends [boolean] ? BoolSearchInput :

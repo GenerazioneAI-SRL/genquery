@@ -130,6 +130,43 @@ Date range (`before` and/or `after`, both optional):
 }
 ```
 
+### Presence checks
+
+Two presence-check forms are available as alternative values to a normal comparison:
+
+**`isNull`** — any primitive field (string, number, boolean, date, enum) **that is declared nullable in the schema** (`{ type: ..., nullable: true }`). With `schemaFromTypeORM`, this is auto-populated from the column's `isNullable` metadata. Sending `isNull` on a non-nullable field is rejected at parse time.
+
+```json
+{ "searchBy": { "deletedAt": { "isNull": true } } }
+{ "searchBy": { "phone":     { "isNull": false } } }
+```
+
+| Form | SQL |
+|------|-----|
+| `{ "isNull": true }`  | `IS NULL` |
+| `{ "isNull": false }` | `IS NOT NULL` |
+
+**`isEmpty`** — string fields only. "Empty" means NULL or the empty string `''`:
+
+```json
+{ "searchBy": { "phone": { "isEmpty": true } } }
+```
+
+| Form | SQL |
+|------|-----|
+| `{ "isEmpty": true }`  | `(col IS NULL OR col = '')` |
+| `{ "isEmpty": false }` | `(col IS NOT NULL AND col <> '')` |
+
+`isEmpty` on a non-string field is rejected at parse time. Unlike `isNull`, it works on non-nullable strings too — there it simply reduces to `= ''`.
+
+Both keys may appear in the same object and are AND-ed (this requires the field to be nullable, since `isNull` does). The useful combination is "not null but blank":
+
+```json
+{ "searchBy": { "phone": { "isNull": false, "isEmpty": true } } }
+```
+
+→ `phone IS NOT NULL AND (phone IS NULL OR phone = '')` ≡ `phone = ''`.
+
 ### Relation fields
 
 Filter by fields on a related entity. The short form is "at least one related row matches" (implicit `some`):

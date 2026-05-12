@@ -13,6 +13,12 @@ interface BaseFieldDefinition {
    * entity's own column mapping).
    */
   column?: string;
+  /**
+   * Whether the column accepts NULL. Defaults to `false`. The parser uses this
+   * to reject `{ isNull }` presence checks on non-nullable fields. With
+   * `schemaFromTypeORM`, this is auto-populated from `ColumnMetadata.isNullable`.
+   */
+  nullable?: boolean;
 }
 
 export type FieldDefinition =

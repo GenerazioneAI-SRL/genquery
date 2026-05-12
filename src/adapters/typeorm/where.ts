@@ -158,6 +158,20 @@ function buildLeaf(
         params: { [p]: cond.search.value },
       };
     }
+    case "null": {
+      const col = qualify(ctx.currentAlias, cond.field);
+      return {
+        sql: `${col} IS ${cond.check.isNull ? "" : "NOT "}NULL`,
+        params: {},
+      };
+    }
+    case "empty": {
+      const col = qualify(ctx.currentAlias, cond.field);
+      const sql = cond.check.isEmpty
+        ? `(${col} IS NULL OR ${col} = '')`
+        : `(${col} IS NOT NULL AND ${col} <> '')`;
+      return { sql, params: {} };
+    }
   }
 }
 

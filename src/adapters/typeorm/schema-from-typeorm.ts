@@ -91,7 +91,7 @@ function buildEntity(
   for (const col of meta.columns) {
     const explicit = overrides[col.propertyName];
     if (explicit) {
-      fields[col.propertyName] = { type: explicit };
+      fields[col.propertyName] = { type: explicit, nullable: col.isNullable };
       continue;
     }
     // Enum columns: extract values so the parser can validate the allowlist.
@@ -99,12 +99,13 @@ function buildEntity(
       fields[col.propertyName] = {
         type: "enum",
         values: (col.enum as readonly string[]).slice(),
+        nullable: col.isNullable,
       };
       continue;
     }
     const fieldType = mapColumnType(col, meta.name, options);
     if (!fieldType) continue;
-    fields[col.propertyName] = { type: fieldType };
+    fields[col.propertyName] = { type: fieldType, nullable: col.isNullable };
   }
 
   // Add any overrides that didn't correspond to a real column (e.g. virtual fields).

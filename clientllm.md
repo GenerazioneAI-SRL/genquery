@@ -117,6 +117,33 @@ A single string matching the allowlist:
 
 Anything outside the allowlist is rejected. No object form. For "any of N", use `OR`.
 
+### Presence checks
+
+**`isNull`** — any primitive field (string, number, boolean, date, enum) declared nullable in the schema. Rejected at parse time on non-nullable fields.
+
+```json
+{ "deletedAt": { "isNull": true } }
+{ "phone":     { "isNull": false } }
+```
+
+| Form | SQL |
+|------|-----|
+| `{ "isNull": true }`  | `IS NULL` |
+| `{ "isNull": false }` | `IS NOT NULL` |
+
+**`isEmpty`** — string fields only. Matches NULL or `''`:
+
+```json
+{ "phone": { "isEmpty": true } }
+```
+
+| Form | SQL |
+|------|-----|
+| `{ "isEmpty": true }`  | `(col IS NULL OR col = '')` |
+| `{ "isEmpty": false }` | `(col IS NOT NULL AND col <> '')` |
+
+`isEmpty` on a non-string field is rejected. `isEmpty` does NOT require the field to be nullable (on a non-nullable string it reduces to `= ''`). Both keys may co-exist in the same object and are AND-ed — e.g. `{ "isNull": false, "isEmpty": true }` matches rows that are not NULL but are `''` (requires a nullable field).
+
 ### Relation fields
 
 Short form — implicit `some` (matches if at least one related row satisfies):
@@ -270,16 +297,25 @@ export type DateTimeInput =
       hours?: number; minutes?: number; seconds?: number;
       offset?: string };
 
+export type NullCheckInput  = { isNull: boolean };
+export type EmptyCheckInput = { isEmpty: boolean };  // string fields only
+
 export type StringSearchInput =
   | string
   | { mode?: StringSearchMode; contained?: boolean;
-      caseSensitive?: boolean; value: string };
+      caseSensitive?: boolean; value: string }
+  | NullCheckInput
+  | EmptyCheckInput;
 
-export type NumberSearchInput = number | { operation?: NumericOp; value: number };
+export type NumberSearchInput =
+  | number
+  | { operation?: NumericOp; value: number }
+  | NullCheckInput;
 
 export type DateSearchInput =
   | DateTimeInput
-  | { before?: DateTimeInput; after?: DateTimeInput };
+  | { before?: DateTimeInput; after?: DateTimeInput }
+  | NullCheckInput;
 
 export type SearchByInput = { OR?: SearchByInput[]; [field: string]: unknown };
 

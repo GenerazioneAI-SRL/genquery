@@ -36,6 +36,29 @@ It's not a proper spec, more like an example than a spec, but it's fairly compre
 			operation: ">" | "<" | ">=" | "<=" | @"=="
 			*value: number
 		},
+
+		// Presence check. Usable as the value of any primitive field
+		// (string, number, boolean, date, enum) in `searchBy`.
+		//
+		//   { isNull: true }   → IS NULL                  (NULLABLE fields only)
+		//   { isNull: false }  → IS NOT NULL              (NULLABLE fields only)
+		//   { isEmpty: true }  → IS NULL OR = ''          (STRING fields only)
+		//   { isEmpty: false } → IS NOT NULL AND <> ''    (STRING fields only)
+		//
+		// Both keys may appear in the same object; they are AND-ed. The useful
+		// combination is `{ isNull: false, isEmpty: true }` which matches rows
+		// that are not NULL but are the empty string. At least one of the two
+		// keys must be present.
+		//
+		// Constraints (rejected at parse time):
+		//  - `isNull` on a field whose schema entry has `nullable: false`
+		//    (the default) — non-nullable fields can never be NULL, so the
+		//    check is always degenerate.
+		//  - `isEmpty` on a non-string field.
+		presenceCheckType: {
+			isNull:  bool,
+			isEmpty: bool,
+		},
 	```
 
 	In the dateTimeType object when it's not an iso string all fields are optional. If not specified offset will have "Z" as default
@@ -108,10 +131,14 @@ A string is searched against a specified regex. The regex is in the language nat
 
 	searchBy: {
 
+		// Any primitive field (string, number, boolean, date, enum) accepts
+		// `presenceCheckType` as an alternative value. `isEmpty` inside it is
+		// string-only — passing it on a non-string field is rejected.
+
 		// string
 
 
-		exampleStringField: string | { // when only a string is specified, default values apply here
+		exampleStringField: string | presenceCheckType | { // when only a string is specified, default values apply here
 			mode: @"splitword" | "exact" | "nativeregex"
 
 			contained: true | @false, // This means that the query should match as part of a string, so "something" would also match "somethingelse"
@@ -131,7 +158,7 @@ A string is searched against a specified regex. The regex is in the language nat
 
 		// date
 
-		date: dateTimeType | { before: dateTimeType, after: dateTimeType }, // either before or after can be omitted from the object
+		date: dateTimeType | presenceCheckType | { before: dateTimeType, after: dateTimeType }, // either before or after can be omitted from the object
 
 		// relations
 
@@ -151,11 +178,11 @@ A string is searched against a specified regex. The regex is in the language nat
 
 		// bool
 
-		exampleBoolField: true,
+		exampleBoolField: true | presenceCheckType,
 
 		// number
 
-		exampleNumberField: number | {
+		exampleNumberField: number | presenceCheckType | {
 			operation: ">" | "<" | ">=" | "<=" | @"==",
 			*value: number
 		},
@@ -164,7 +191,7 @@ A string is searched against a specified regex. The regex is in the language nat
 
 		// An enum field must be a string value that matches one of the allowed
 		// values declared in the schema. The parser rejects anything else.
-		exampleEnumField: "allowedValue1" | "allowedValue2" | ...,
+		exampleEnumField: "allowedValue1" | "allowedValue2" | ... | presenceCheckType,
 
 		// OR
 

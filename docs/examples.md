@@ -12,9 +12,9 @@ const schema: Schema = {
         id:        { type: "number" },
         firstName: { type: "string" },
         lastName:  { type: "string" },
-        email:     { type: "string" },
-        fiscalCode:{ type: "string" },
-        birthDate: { type: "date" },
+        email:     { type: "string",  nullable: true },
+        fiscalCode:{ type: "string",  nullable: true },
+        birthDate: { type: "date",    nullable: true },
         age:       { type: "number" },
         active:    { type: "boolean" },
       },
@@ -188,6 +188,50 @@ For "any of N" matching, use `OR`:
     ]
   }
 }
+```
+
+---
+
+## Presence checks
+
+Users whose `birthDate` is set (column is not NULL):
+
+```json
+{ "searchBy": { "birthDate": { "isNull": false } } }
+```
+
+Users with no fiscal code recorded (column IS NULL):
+
+```json
+{ "searchBy": { "fiscalCode": { "isNull": true } } }
+```
+
+Users whose `email` is missing or blank (string-only `isEmpty`):
+
+```json
+{ "searchBy": { "email": { "isEmpty": true } } }
+```
+
+Active users who have at least one of email / fiscalCode set:
+
+```json
+{
+  "searchBy": {
+    "active": true,
+    "OR": [
+      { "email":      { "isNull": false } },
+      { "fiscalCode": { "isNull": false } }
+    ]
+  }
+}
+```
+
+`isNull` works on any primitive field. `isEmpty` is string-only and matches both NULL and `''`.
+
+Both keys may appear together (AND-ed). To match rows that are not NULL but are blank:
+
+```json
+{ "searchBy": { "email": { "isNull": false, "isEmpty": true } } }
 ```
 
 ---
