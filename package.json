@@ -3,6 +3,25 @@
   "version": "0.1.0",
   "description": "ORM-agnostic JSON query language with pluggable adapters (TypeORM, ...)",
   "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GenerazioneAI-SRL/genquery.git"
+  },
+  "homepage": "https://github.com/GenerazioneAI-SRL/genquery#readme",
+  "bugs": {
+    "url": "https://github.com/GenerazioneAI-SRL/genquery/issues"
+  },
+  "keywords": [
+    "query",
+    "query-builder",
+    "orm",
+    "typeorm",
+    "json-query",
+    "dsl",
+    "search",
+    "filter",
+    "pagination"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -19,13 +38,16 @@
   },
   "files": [
     "dist",
-    "src"
+    "README.md",
+    "LICENSE",
+    "spec.md"
   ],
   "scripts": {
     "build": "tsc",
     "build:dev": "tsc && rm -rf node_modules/typeorm",
     "typecheck": "tsc --noEmit",
-    "test": "node --test dist/tests"
+    "test": "node --test dist/tests",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "typeorm": ">=0.3.0"
