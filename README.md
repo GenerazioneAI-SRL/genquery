@@ -17,17 +17,14 @@ npm install typeorm
 ```typescript
 import "reflect-metadata";
 import { DataSource } from "typeorm";
-import { GenQueryEngine } from "genquery";
-import { TypeORMAdapter, schemaFromTypeORM } from "genquery/typeorm";
+import { createTypeORMEngine } from "genquery/typeorm";
 
-// 1. Initialize TypeORM with your entity classes (decorators do the work)
+// 1. Initialize TypeORM with your entity classes
 const dataSource = new DataSource({ /* ... */ entities: [User, Post] });
 await dataSource.initialize();
 
-// 2. Derive the genquery schema directly from TypeORM metadata
-const schema  = schemaFromTypeORM(dataSource);
-const adapter = new TypeORMAdapter(schema);
-const engine  = new GenQueryEngine({ schema, adapter });
+// 2. One line to set up the schema, adapter, and engine
+const engine = createTypeORMEngine(dataSource);
 
 // 3. Run a query from a request body
 const qb = dataSource.getRepository(User).createQueryBuilder("User");
@@ -38,14 +35,30 @@ const result = engine.run(
     orderBy:  "createdAt",
     pagination: { page: 0, perPage: 20 },
   },
-  "User",  // root entity name (matches the TypeORM entity class name)
-  qb,      // target QueryBuilder
+  qb,   // target QueryBuilder — entity name + entity type both read from this
 );
 
 const users = await result.getMany();
 ```
 
-No separate schema definition — `schemaFromTypeORM` walks the DataSource's entity metadata (columns, relations, primary keys) and produces a `Schema` for you. You can still write one by hand if you need fine-grained control or don't use TypeORM.
+`createTypeORMEngine` is a thin wrapper around `schemaFromTypeORM` → `new TypeORMAdapter` → `new GenQueryEngine`. The root entity (`"User"` in this case) is derived from `qb.expressionMap.mainAlias.metadata.name` at runtime, and the TS entity type is read from `SelectQueryBuilder<User>`. If you need to override or your adapter can't introspect, the 3-arg form still works: `engine.run(input, "User", qb)`.
+
+Need fine-grained control? You can still build it manually:
+
+```typescript
+const schema  = schemaFromTypeORM(dataSource, { overrides: { User: { meta: "string" } } });
+const adapter = new TypeORMAdapter(schema, { paramPrefix: "q" });
+const engine  = new GenQueryEngine({ adapter });   // schema is read from the adapter
+```
+
+Or pass the same options to `createTypeORMEngine`:
+
+```typescript
+const engine = createTypeORMEngine(dataSource, {
+  schema:  { overrides: { User: { meta: "string" } } },
+  adapter: { paramPrefix: "q" },
+});
+```
 
 ## Core concepts
 
@@ -90,27 +103,33 @@ const schema: Schema = {
 
 A `GenQueryInput` is a plain JSON object with five optional top-level keys.
 
-By default the input is loosely typed (anything goes — useful when forwarding a request body straight through). Pass your TypeORM entity class as a generic parameter to get autocomplete and value-shape checking:
+The entity type is inferred automatically from the `target` argument when it has a recognizable shape (e.g. a TypeORM `SelectQueryBuilder<User>`). No explicit generic is required — autocomplete and value-shape checking flow from the QueryBuilder's entity type:
 
 ```typescript
-const input: GenQueryInput<User> = {
-  searchBy: {
-    firstName: "mario",                              // OK
-    age: { operation: ">=", value: 18 },             // OK — number → comparison
-    birthDate: { after: "2000-01-01T00:00:00Z" },    // OK — date → range
-    posts: { title: "typescript" },                  // OK — relation → recursive
-    // age: "x",       // ✗ type error: number field can't take a string
-    // nope: "x",      // ✗ type error: 'nope' isn't a field on User
-  },
-  orderBy: { field: "lastName", order: "asc" },     // ✓ field constrained to User keys
-  select:  { firstName: true },                      // ✓ only primitive fields
-  include: { posts: "all" },                         // ✓ only relations
-};
+const qb = dataSource.getRepository(User).createQueryBuilder("User");
+// qb is SelectQueryBuilder<User> — entity type flows into the call below
 
-engine.run<User>(input, "User", qb);  // same generic on run()
+engine.run(
+  {
+    searchBy: {
+      firstName: "mario",                              // OK
+      age: { operation: ">=", value: 18 },             // OK — number → comparison
+      birthDate: { after: "2000-01-01T00:00:00Z" },    // OK — date → range
+      posts: { title: "typescript" },                  // OK — relation → recursive
+      // age: "x",       // ✗ type error: number field can't take a string
+      // nope: "x",      // ✗ type error: 'nope' isn't a field on User
+    },
+    orderBy: { field: "lastName", order: "asc" },     // ✓ field constrained to User keys
+    select:  { firstName: true },                      // ✓ only primitive fields
+    include: { posts: "all" },                         // ✓ only relations
+  },
+  qb,
+);
 ```
 
-The generic distinguishes fields (primitives → searchable / selectable) from relations (objects/arrays → includable / recursive search), and picks the right value shape per field type (string/number/boolean/Date).
+The inference distinguishes fields (primitives → searchable / selectable) from relations (objects/arrays → includable / recursive search), and picks the right value shape per field type (string/number/boolean/Date/enum).
+
+If your target type doesn't expose the entity (e.g. an adapter whose target is `undefined`), the input falls back to a loose form where any key/value is accepted — the runtime parser still validates everything against the schema.
 
 Top-level keys:
 
@@ -129,12 +148,14 @@ Full query language reference: [docs/query-reference.md](docs/query-reference.md
 `GenQueryEngine` is the public entry point. It asserts that the schema passed to it and the schema held by the adapter are the same instance.
 
 ```typescript
-const engine = new GenQueryEngine({ schema, adapter });
+const engine = new GenQueryEngine({ adapter });   // schema comes from the adapter
 
-// parse + apply in one step
+// parse + apply (rootEntity derived from target when the adapter supports it)
+engine.run(input, target);
+// or explicit rootEntity:
 engine.run(input, rootEntity, target);
 
-// parse only
+// parse only (requires explicit rootEntity — no target to infer from)
 const parsed = engine.parse(input, rootEntity);
 
 // apply a previously parsed query

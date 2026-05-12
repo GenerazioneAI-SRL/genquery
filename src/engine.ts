@@ -5,30 +5,51 @@ import type { Schema } from "./schema";
 import type { GenQueryInput } from "./types";
 
 export interface GenQueryEngineOptions<TTarget, TResult> {
-  schema: Schema;
   adapter: Adapter<TTarget, TResult>;
 }
+
+// --- Type-level helpers for inferring the entity type from a target value ---
+
+type IsAny<T> = 0 extends 1 & T ? true : false;
+
+/** True for TypeORM's wide ObjectLiteral default — treat as "unspecified". */
+type IsLooseRecord<T> = IsAny<T> extends true
+  ? true
+  : [T] extends [Record<string, any>]
+    ? [Record<string, any>] extends [T]
+      ? true
+      : false
+    : false;
+
+/**
+ * Inspect the target's structural shape. If it looks like a TypeORM
+ * `SelectQueryBuilder<T>` (has `getMany(): Promise<T[]>`), pull out T.
+ * Falls back to `unknown` (loose mode) for any other adapter target.
+ */
+type InferEntityFromTarget<X> = X extends {
+  getMany(): Promise<infer A>;
+}
+  ? A extends (infer T)[]
+    ? IsLooseRecord<T> extends true
+      ? unknown
+      : T
+    : unknown
+  : unknown;
 
 /**
  * Combines parsing + an adapter into a single entry point. The engine is
  * generic over the adapter so the signature of `run` matches the chosen
  * backend (e.g. `SelectQueryBuilder<T>` in/out for TypeORM).
  *
- * The schema given to the engine and the schema used by the adapter must be
- * the same instance; the engine asserts this at construction time.
+ * The schema is read from the adapter — there is one source of truth.
  */
 export class GenQueryEngine<TTarget, TResult> {
   readonly schema: Schema;
   readonly adapter: Adapter<TTarget, TResult>;
 
   constructor(options: GenQueryEngineOptions<TTarget, TResult>) {
-    if (options.schema !== options.adapter.schema) {
-      throw new Error(
-        "GenQueryEngine: the schema passed to the engine must be the same instance used by the adapter",
-      );
-    }
-    this.schema = options.schema;
     this.adapter = options.adapter;
+    this.schema = options.adapter.schema;
   }
 
   /**
@@ -44,15 +65,44 @@ export class GenQueryEngine<TTarget, TResult> {
   /**
    * Parse and apply.
    *
-   * Pass an entity class as the generic parameter to get autocomplete on
-   * fields / relations (e.g. `engine.run<User>(input, "User", qb)`).
+   * The entity type is inferred from the `target` argument when it has a
+   * recognizable shape (e.g. a TypeORM `SelectQueryBuilder<User>`). When the
+   * adapter implements `getRootEntity`, the `rootEntity` string is optional —
+   * the engine asks the adapter to derive it from the target. Pass an explicit
+   * `rootEntity` to override (or when the adapter can't introspect).
    */
-  run<T = unknown>(
-    input: GenQueryInput<T>,
+  run<X extends TTarget>(
+    input: GenQueryInput<InferEntityFromTarget<X>>,
+    target: X,
+  ): TResult;
+  run<X extends TTarget>(
+    input: GenQueryInput<InferEntityFromTarget<X>>,
     rootEntity: string,
-    target: TTarget,
+    target: X,
+  ): TResult;
+  run(
+    input: GenQueryInput,
+    arg2: string | TTarget,
+    arg3?: TTarget,
   ): TResult {
-    const parsed = this.parse<T>(input, rootEntity);
+    let rootEntity: string;
+    let target: TTarget;
+    if (typeof arg2 === "string") {
+      rootEntity = arg2;
+      target = arg3 as TTarget;
+    } else {
+      target = arg2;
+      const derived = this.adapter.getRootEntity?.(target);
+      if (!derived) {
+        throw new Error(
+          "GenQueryEngine.run: rootEntity not provided and the adapter " +
+            `('${this.adapter.name}') could not derive it from the target. ` +
+            "Pass rootEntity explicitly: engine.run(input, rootEntity, target).",
+        );
+      }
+      rootEntity = derived;
+    }
+    const parsed = parseQuery(input, this.schema, rootEntity);
     return this.adapter.apply(target, parsed);
   }
 

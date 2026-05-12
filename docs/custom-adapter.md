@@ -105,7 +105,7 @@ export class PrismaAdapter implements Adapter<undefined, PrismaFindManyArgs> {
 import { GenQueryEngine } from "genquery";
 
 const adapter = new PrismaAdapter(schema);
-const engine  = new GenQueryEngine({ schema, adapter });
+const engine  = new GenQueryEngine({ adapter });   // schema is read from the adapter
 
 // target is undefined because the Prisma adapter doesn't need a query builder
 const args = engine.run(input, "User", undefined);

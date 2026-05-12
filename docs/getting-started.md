@@ -110,10 +110,10 @@ import { GenQueryEngine } from "genquery";
 import { TypeORMAdapter } from "genquery/typeorm";
 
 const adapter = new TypeORMAdapter(schema);
-const engine  = new GenQueryEngine({ schema, adapter });
+const engine  = new GenQueryEngine({ adapter });   // schema is read from the adapter
 ```
 
-The `schema` passed to the engine and the `schema` held by the adapter **must be the same object instance**. The engine asserts this at construction time.
+There's only one source of truth — the schema lives on the adapter, and the engine reads it from there.
 
 ### 4. Wire it to a request handler
 

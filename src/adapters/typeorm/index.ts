@@ -3,3 +3,7 @@ export {
   schemaFromTypeORM,
   type SchemaFromTypeORMOptions,
 } from "./schema-from-typeorm";
+export {
+  createTypeORMEngine,
+  type CreateTypeORMEngineOptions,
+} from "./create";

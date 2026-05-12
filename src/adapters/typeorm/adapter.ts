@@ -38,6 +38,15 @@ export class TypeORMAdapter
     private readonly options: TypeORMAdapterOptions = {},
   ) {}
 
+  /**
+   * Derive the root entity name from a TypeORM `SelectQueryBuilder`. Returns
+   * the entity class name as TypeORM knows it (e.g. `"User"`), so the engine
+   * can look it up in the schema without the caller having to repeat it.
+   */
+  getRootEntity(qb: SelectQueryBuilder<ObjectLiteral>): string | undefined {
+    return qb.expressionMap?.mainAlias?.metadata?.name;
+  }
+
   apply<T extends ObjectLiteral>(
     qb: SelectQueryBuilder<T>,
     query: ParsedQuery,
