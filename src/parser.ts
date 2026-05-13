@@ -19,6 +19,7 @@ import type {
   ParsedDateSearch,
   ParsedEmptyCheck,
   ParsedFieldCondition,
+  ParsedIdSearch,
   ParsedInclude,
   ParsedIncludeRelation,
   ParsedNullCheck,
@@ -90,6 +91,29 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
     typeof v === "object" &&
     !Array.isArray(v) &&
     !(v instanceof Date)
+  );
+}
+
+function parseIdSearch(raw: unknown, path: string): ParsedIdSearch {
+  // Accept the bare scalar form.
+  if (typeof raw === "string") return { value: raw };
+  if (typeof raw === "number") return { value: String(raw) };
+  // Accept the string-search object form for back-compat with frontends that
+  // send `{ mode: "exact", value: "..." }` against ID columns. `mode`,
+  // `contained`, and `caseSensitive` are ignored — ID searches are always
+  // exact equality.
+  if (isPlainObject(raw)) {
+    const value = raw.value;
+    if (typeof value === "string") return { value };
+    if (typeof value === "number") return { value: String(value) };
+    throw new QueryValidationError(
+      "Id search: 'value' must be a string or number",
+      `${path}.value`,
+    );
+  }
+  throw new QueryValidationError(
+    "Expected an id value (string/number) or { value } object",
+    path,
   );
 }
 
@@ -412,6 +436,12 @@ function parseLeafConditionTyped(
       }
       return { kind: "enum", field, search: { value } };
     }
+    case "id":
+      return {
+        kind: "id",
+        field,
+        search: parseIdSearch(value, path),
+      };
     default:
       throw new QueryValidationError(
         `Unsupported field type '${(def as { type: string }).type}'`,

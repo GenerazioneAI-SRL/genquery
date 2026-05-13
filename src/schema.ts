@@ -4,7 +4,13 @@
  * conditions. The schema is intentionally ORM-agnostic.
  */
 
-export type FieldType = "string" | "number" | "boolean" | "date" | "enum";
+export type FieldType =
+  | "string"
+  | "number"
+  | "boolean"
+  | "date"
+  | "enum"
+  | "id";
 
 interface BaseFieldDefinition {
   /**
@@ -22,7 +28,9 @@ interface BaseFieldDefinition {
 }
 
 export type FieldDefinition =
-  | (BaseFieldDefinition & { type: "string" | "number" | "boolean" | "date" })
+  | (BaseFieldDefinition & {
+      type: "string" | "number" | "boolean" | "date" | "id";
+    })
   | EnumFieldDefinition;
 
 export interface EnumFieldDefinition extends BaseFieldDefinition {

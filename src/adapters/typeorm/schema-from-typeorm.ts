@@ -87,6 +87,7 @@ function buildEntity(
 ): EntityDefinition {
   const fields: Record<string, FieldDefinition> = {};
   const overrides = options.overrides?.[meta.name] ?? {};
+  const keyColumns = collectKeyColumnNames(meta);
 
   for (const col of meta.columns) {
     const explicit = overrides[col.propertyName];
@@ -101,6 +102,13 @@ function buildEntity(
         values: (col.enum as readonly string[]).slice(),
         nullable: col.isNullable,
       };
+      continue;
+    }
+    // Key-like columns (primary keys, foreign keys, uuid-typed columns) are
+    // always matched by exact equality — never with LIKE/ILIKE, which fails
+    // outright on Postgres `uuid`.
+    if (keyColumns.has(col.propertyName) || isUuidColumn(col)) {
+      fields[col.propertyName] = { type: "id", nullable: col.isNullable };
       continue;
     }
     const fieldType = mapColumnType(col, meta.name, options);
@@ -134,6 +142,26 @@ function buildEntity(
 function isStringEnumColumn(col: ColumnMetadata): boolean {
   if (!Array.isArray(col.enum) || col.enum.length === 0) return false;
   return col.enum.every((v) => typeof v === "string");
+}
+
+function isUuidColumn(col: ColumnMetadata): boolean {
+  const t = col.type;
+  return typeof t === "string" && t.toLowerCase() === "uuid";
+}
+
+function collectKeyColumnNames(meta: EntityMetadata): Set<string> {
+  const names = new Set<string>();
+  for (const pk of meta.primaryColumns) {
+    names.add(pk.propertyName);
+  }
+  for (const rel of meta.relations) {
+    for (const jc of rel.joinColumns) {
+      // `propertyName` here is the FK property on the parent entity
+      // (e.g. `companyId`), not the related entity's id field.
+      if (jc.propertyName) names.add(jc.propertyName);
+    }
+  }
+  return names;
 }
 
 function mapColumnType(

@@ -72,6 +72,12 @@ export interface PrismaFieldDef {
   isId?: boolean;
   isUnique?: boolean;
   relationName?: string;
+  /**
+   * For `object` (relation) fields: the scalar fields on this model that hold
+   * the foreign key. Used to flag those scalar fields as `id` type so they're
+   * always matched by exact equality.
+   */
+  relationFromFields?: readonly string[];
 }
 
 export interface PrismaEnumDef {

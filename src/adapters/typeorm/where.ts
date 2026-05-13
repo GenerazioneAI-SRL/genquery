@@ -44,13 +44,17 @@ function buildString(
   params: ParamCounter,
 ): Fragment {
   const col = qualify(alias, field);
+  // Cast to text so LIKE / ILIKE / regex operators work on non-text columns
+  // (notably Postgres `uuid`, which has no `~~*` / `~*` operator). No-op for
+  // text-like columns.
+  const textCol = `${col}::text`;
   const like = search.caseSensitive ? "LIKE" : "ILIKE";
   switch (search.mode) {
     case "exact": {
       const p = params.next();
       if (search.contained) {
         return {
-          sql: `${col} ${like} :${p}`,
+          sql: `${textCol} ${like} :${p}`,
           params: { [p]: `%${escapeLike(search.value)}%` },
         };
       }
@@ -62,7 +66,7 @@ function buildString(
       }
       // Case-insensitive equality via ILIKE on the escaped literal (no wildcards).
       return {
-        sql: `${col} ILIKE :${p}`,
+        sql: `${textCol} ILIKE :${p}`,
         params: { [p]: escapeLike(search.value) },
       };
     }
@@ -70,7 +74,7 @@ function buildString(
       const p = params.next();
       const op = search.caseSensitive ? "~" : "~*";
       return {
-        sql: `${col} ${op} :${p}`,
+        sql: `${textCol} ${op} :${p}`,
         params: { [p]: search.value },
       };
     }
@@ -86,7 +90,7 @@ function buildString(
         const pattern = search.contained
           ? `%${escapeLike(w)}%`
           : escapeLike(w);
-        parts.push(`${col} ${like} :${p}`);
+        parts.push(`${textCol} ${like} :${p}`);
         out[p] = pattern;
       }
       return { sql: `(${parts.join(" OR ")})`, params: out };
@@ -152,6 +156,13 @@ function buildLeaf(
     case "date":
       return buildDate(ctx.currentAlias, cond.field, cond.search, ctx.params);
     case "enum": {
+      const p = ctx.params.next();
+      return {
+        sql: `${qualify(ctx.currentAlias, cond.field)} = :${p}`,
+        params: { [p]: cond.search.value },
+      };
+    }
+    case "id": {
       const p = ctx.params.next();
       return {
         sql: `${qualify(ctx.currentAlias, cond.field)} = :${p}`,

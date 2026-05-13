@@ -95,6 +95,7 @@ function buildEntity(
   const fields: Record<string, FieldDefinition> = {};
   const relations: Record<string, RelationDefinition> = {};
   const overrides = options.overrides?.[model.name] ?? {};
+  const keyFields = collectKeyFieldNames(model);
 
   for (const f of model.fields) {
     if (f.kind === "object") {
@@ -126,6 +127,13 @@ function buildEntity(
       continue;
     }
 
+    // Primary keys and relation foreign keys are matched by exact equality
+    // regardless of the underlying scalar type.
+    if (keyFields.has(f.name)) {
+      fields[f.name] = { type: "id", nullable: !f.isRequired };
+      continue;
+    }
+
     // scalar
     const fieldType = mapScalar(f, model.name, options);
     if (!fieldType) continue;
@@ -148,6 +156,21 @@ function buildEntity(
   const pk = derivePrimaryKey(model);
   if (pk) definition.primaryKey = pk;
   return definition;
+}
+
+function collectKeyFieldNames(model: PrismaModelDef): Set<string> {
+  const names = new Set<string>();
+  for (const f of model.fields) {
+    if (f.isId) names.add(f.name);
+    if (f.kind === "object" && f.relationFromFields) {
+      for (const fk of f.relationFromFields) names.add(fk);
+    }
+  }
+  const composite = model.primaryKey?.fields;
+  if (composite) {
+    for (const name of composite) names.add(name);
+  }
+  return names;
 }
 
 function derivePrimaryKey(model: PrismaModelDef): string | undefined {

@@ -81,6 +81,8 @@ function buildCondition(
       return { [cond.field]: buildDateFilter(cond.search) };
     case "enum":
       return { [cond.field]: cond.search.value };
+    case "id":
+      return { [cond.field]: cond.search.value };
     case "null":
       return {
         [cond.field]: cond.check.isNull ? null : { not: null },
