@@ -22,8 +22,9 @@ type IsLooseRecord<T> = IsAny<T> extends true
     : false;
 
 /**
- * Inspect the target's structural shape. If it looks like a TypeORM
- * `SelectQueryBuilder<T>` (has `getMany(): Promise<T[]>`), pull out T.
+ * Inspect the target's structural shape and pull out the entity type:
+ *  - TypeORM `SelectQueryBuilder<T>` exposes `getMany(): Promise<T[]>`.
+ *  - Prisma model delegate exposes `findMany(args?): Promise<T[]>`.
  * Falls back to `unknown` (loose mode) for any other adapter target.
  */
 type InferEntityFromTarget<X> = X extends {
@@ -34,7 +35,15 @@ type InferEntityFromTarget<X> = X extends {
       ? unknown
       : T
     : unknown
-  : unknown;
+  : X extends {
+        findMany(args?: any): Promise<infer A>;
+      }
+    ? A extends (infer T)[]
+      ? IsLooseRecord<T> extends true
+        ? unknown
+        : T
+      : unknown
+    : unknown;
 
 /**
  * Combines parsing + an adapter into a single entry point. The engine is
