@@ -131,4 +131,18 @@ export interface ParsedQuery {
   include: ParsedInclude;
   select: ParsedSelect;
   pagination: ParsedPagination;
+  /**
+   * Server-side raw adapter args, merged by the adapter into the final query.
+   * NOT from the wire — set by the backend (e.g. a repository) to run native
+   * ORM filters/includes the DSL doesn't model, while still paginating through
+   * the engine. For Prisma: `{ where, orderBy, include, select }`. `where` is
+   * AND-merged with the parsed where; `orderBy`/`include`/`select` are used when
+   * the parsed query doesn't set them.
+   */
+  baseArgs?: {
+    where?: unknown;
+    orderBy?: unknown;
+    include?: unknown;
+    select?: unknown;
+  };
 }

@@ -96,10 +96,17 @@ export class GenQueryEngine<TTarget, TResult> {
     rootEntity: string,
     target: X,
   ): Promise<PaginatedResult<InferEntityFromTarget<X>>>;
+  run<X extends TTarget>(
+    input: GenQueryInput<InferEntityFromTarget<X>>,
+    rootEntity: string,
+    target: X,
+    base: ParsedQuery["baseArgs"],
+  ): Promise<PaginatedResult<InferEntityFromTarget<X>>>;
   async run(
     input: GenQueryInput,
     arg2: string | TTarget,
     arg3?: TTarget,
+    arg4?: ParsedQuery["baseArgs"],
   ): Promise<PaginatedResult<unknown>> {
     if (!this.adapter.execute) {
       throw new Error(
@@ -125,6 +132,7 @@ export class GenQueryEngine<TTarget, TResult> {
       rootEntity = derived;
     }
     const parsed = parseQuery(input, this.schema, rootEntity);
+    if (arg4) parsed.baseArgs = arg4;
     return this.adapter.execute(target, parsed);
   }
 

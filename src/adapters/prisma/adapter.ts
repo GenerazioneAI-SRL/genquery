@@ -106,6 +106,36 @@ export class PrismaAdapter
 
     applyPagination(args, query.pagination);
     applySelectAndInclude(args, query, this.schema);
+
+    // Merge server-side raw base args (native Prisma filters/includes the DSL
+    // doesn't model). where → AND-merged; orderBy/include/select → used when the
+    // parsed query didn't set them.
+    const base = query.baseArgs;
+    if (base) {
+      if (base.where !== undefined && base.where !== null) {
+        args.where =
+          args.where !== undefined
+            ? ({ AND: [base.where, args.where] } as unknown as PrismaWhere)
+            : (base.where as PrismaWhere);
+      }
+      if (base.orderBy !== undefined && args.orderBy === undefined) {
+        args.orderBy = base.orderBy as PrismaFindManyArgs["orderBy"];
+      }
+      if (
+        base.include !== undefined &&
+        args.include === undefined &&
+        args.select === undefined
+      ) {
+        args.include = base.include as PrismaFindManyArgs["include"];
+      }
+      if (
+        base.select !== undefined &&
+        args.select === undefined &&
+        args.include === undefined
+      ) {
+        args.select = base.select as PrismaFindManyArgs["select"];
+      }
+    }
     return args;
   }
 }
