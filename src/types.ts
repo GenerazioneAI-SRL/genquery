@@ -215,7 +215,7 @@ export type OrderByInput<T = unknown> = IsLoose<T> extends true
 export type IncludeFieldSpec = boolean;
 
 export type IncludeRelationSpec<U = unknown> = IsLoose<U> extends true
-  ? "all" | { [field: string]: IncludeFieldSpec }
+  ? "all" | { [fieldOrRelation: string]: IncludeFieldSpec | IncludeRelationSpec }
   :
       | "all"
       | { [K in FieldKeysOf<U>]?: IncludeFieldSpec };

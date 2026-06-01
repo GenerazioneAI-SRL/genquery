@@ -105,13 +105,33 @@ function relationToSpec(
   spec: ParsedIncludeRelation,
   targetEntityName: string,
   schema: Schema,
-): boolean | { select: PrismaSelect } {
+): boolean | { select: PrismaSelect } | { include: PrismaInclude } {
   if (spec.kind === "all") return true;
   const target = getEntity(schema, targetEntityName);
+  const nested = spec.relations ?? {};
+  const nestedKeys = Object.keys(nested);
+
+  // No explicit field selection: use `include` (Prisma returns all scalars) and
+  // nest the recursive relation includes.
+  if (spec.fields.length === 0) {
+    if (nestedKeys.length === 0) return true;
+    const inc: PrismaInclude = {};
+    for (const [relName, child] of Object.entries(nested)) {
+      const relDef = target.relations?.[relName];
+      if (relDef) inc[relName] = relationToSpec(child, relDef.target, schema);
+    }
+    return { include: inc };
+  }
+
+  // Explicit fields selected: use `select` (+ nested relations under select).
   const pk = primaryKeyOf(target);
   const set = new Set(spec.fields);
   set.add(pk);
   const sel: PrismaSelect = {};
   for (const f of set) sel[f] = true;
+  for (const [relName, child] of Object.entries(nested)) {
+    const relDef = target.relations?.[relName];
+    if (relDef) sel[relName] = relationToSpec(child, relDef.target, schema);
+  }
   return { select: sel };
 }

@@ -85,7 +85,12 @@ export type ParsedSelect =
 
 export type ParsedIncludeRelation =
   | { kind: "all" }
-  | { kind: "fields"; fields: string[] };
+  | {
+      kind: "fields";
+      fields: string[];
+      /** Nested relations to include recursively (multi-level include). */
+      relations?: Record<string, ParsedIncludeRelation>;
+    };
 
 export type ParsedInclude =
   | { kind: "none" }

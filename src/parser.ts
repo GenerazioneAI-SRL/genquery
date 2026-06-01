@@ -577,37 +577,74 @@ function parseInclude(
         `${path}.${relName}`,
       );
     }
-    if (spec === "all") {
-      relations[relName] = { kind: "all" };
-      continue;
-    }
-    if (!isPlainObject(spec)) {
-      throw new QueryValidationError(
-        `include.${relName} must be 'all' or an object`,
-        `${path}.${relName}`,
-      );
-    }
-    const targetEntity = getEntity(schema, relDef.target);
-    const fields: string[] = [];
-    for (const [k, v] of Object.entries(spec)) {
-      if (v !== true) continue;
-      if (!targetEntity.fields[k]) {
+    relations[relName] = parseRelationSpec(
+      spec,
+      getEntity(schema, relDef.target),
+      schema,
+      `${path}.${relName}`,
+    );
+  }
+  return { kind: "map", relations };
+}
+
+/**
+ * Parse one relation's include spec, RECURSIVELY. A spec object's keys may be
+ * scalar fields of the target (value `true` → select that field) OR nested
+ * relations of the target (value `true`/"all"/object → include that relation,
+ * recursing). Enables multi-level includes (e.g. userSystemRoles → systemRole).
+ */
+function parseRelationSpec(
+  spec: unknown,
+  entity: EntityDefinition,
+  schema: Schema,
+  path: string,
+): ParsedIncludeRelation {
+  if (spec === "all") return { kind: "all" };
+  if (!isPlainObject(spec)) {
+    throw new QueryValidationError(`${path} must be 'all' or an object`, path);
+  }
+  const fields: string[] = [];
+  const relations: Record<string, ParsedIncludeRelation> = {};
+  for (const [k, v] of Object.entries(spec)) {
+    const fieldDef = entity.fields[k];
+    const relDef = entity.relations?.[k];
+    if (fieldDef) {
+      if (v !== true) {
         throw new QueryValidationError(
-          `include.${relName}.${k} is not a known field of '${targetEntity.name}'`,
-          `${path}.${relName}.${k}`,
+          `${path}.${k}: field selection must be true`,
+          `${path}.${k}`,
         );
       }
-      if (targetEntity.fields[k].selectable === false) {
+      if (fieldDef.selectable === false) {
         throw new QueryValidationError(
-          `include.${relName}.${k}: field of '${targetEntity.name}' is not selectable`,
-          `${path}.${relName}.${k}`,
+          `${path}.${k}: field of '${entity.name}' is not selectable`,
+          `${path}.${k}`,
         );
       }
       fields.push(k);
+    } else if (relDef) {
+      if (relDef.includable === false) {
+        throw new QueryValidationError(
+          `${path}.${k}: relation of '${entity.name}' is not includable`,
+          `${path}.${k}`,
+        );
+      }
+      relations[k] = parseRelationSpec(
+        v === true ? "all" : v,
+        getEntity(schema, relDef.target),
+        schema,
+        `${path}.${k}`,
+      );
+    } else {
+      throw new QueryValidationError(
+        `${path}.${k} is not a known field or relation of '${entity.name}'`,
+        `${path}.${k}`,
+      );
     }
-    relations[relName] = { kind: "fields", fields };
   }
-  return { kind: "map", relations };
+  return Object.keys(relations).length > 0
+    ? { kind: "fields", fields, relations }
+    : { kind: "fields", fields };
 }
 
 function parseShowFlag(
