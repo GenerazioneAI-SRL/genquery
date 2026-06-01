@@ -1,9 +1,11 @@
-import type {
-  EntityDefinition,
-  FieldDefinition,
-  FieldType,
-  RelationDefinition,
-  Schema,
+import {
+  applyPolicy,
+  type EntityDefinition,
+  type EntityPolicy,
+  type FieldDefinition,
+  type FieldType,
+  type RelationDefinition,
+  type Schema,
 } from "../../schema";
 import type {
   PrismaDatamodel,
@@ -38,6 +40,14 @@ export interface SchemaFromPrismaOptions {
     fieldName: string,
     scalarType: string,
   ) => ScalarFieldType | undefined;
+  /**
+   * Per-model allowlist policy (filterable/sortable/selectable/includable +
+   * maxPerPage), keyed by model name. Projected onto the schema's per-field
+   * flags via `applyPolicy` after the schema is built. Models absent here stay
+   * unrestricted. This is how a backend enforces its resource-manifest
+   * allowlists through the genquery parser.
+   */
+  policy?: Record<string, EntityPolicy>;
 }
 
 /**
@@ -71,7 +81,8 @@ export function schemaFromPrisma(
   for (const model of selected) {
     entities[model.name] = buildEntity(model, enumValues, options);
   }
-  return { entities };
+  const schema: Schema = { entities };
+  return options.policy ? applyPolicy(schema, options.policy) : schema;
 }
 
 function indexEnums(

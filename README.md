@@ -173,6 +173,40 @@ const parsed = engine.parse(input, rootEntity);
 engine.runParsed(parsed, target);
 ```
 
+### Policy (allowlist)
+
+By default every field/relation that *exists* in the schema is queryable. A policy
+restricts that surface per entity, so a frontend can read a field but not filter/sort on it,
+not include an expensive relation, or not over-fetch a huge page. Enforced by the parser
+(throws `QueryValidationError`); `maxPerPage` is *clamped*, not rejected.
+
+Low-level: optional flags on the schema (`filterable` / `sortable` / `selectable` on fields,
+`includable` / `filterable` on relations, `maxPerPage` on entities — all default to allowed).
+
+Ergonomic: declare allowlists by name and project them with `applyPolicy` (ORM-agnostic) or
+the `policy` option of `schemaFromPrisma`.
+
+```typescript
+import { applyPolicy } from "@generazioneai/genquery";
+
+const restricted = applyPolicy(schema, {
+  User: {
+    filterable: ["name", "email"],   // only these allowed in searchBy
+    sortable:   ["createdAt"],        // only this in orderBy
+    includable: ["posts"],            // only this relation in include
+    maxPerPage: 100,                  // perPage > 100 is clamped to 100
+  },
+});
+// per axis: array omitted = unrestricted · present = only-listed · empty = none
+```
+
+```typescript
+// Prisma: build + restrict in one call
+const schema = schemaFromPrisma(Prisma.dmmf.datamodel, {
+  policy: { User: { filterable: ["name"], includable: ["posts"], maxPerPage: 100 } },
+});
+```
+
 ### Errors
 
 Parse failures throw `QueryValidationError` with a `path` field pointing to the offending location in the input (e.g. `"searchBy.posts.title.value"`).

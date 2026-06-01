@@ -313,11 +313,23 @@ function parseSearchBy(
     const relationDef = entity.relations?.[key];
 
     if (fieldDef) {
+      if (fieldDef.filterable === false) {
+        throw new QueryValidationError(
+          `Field '${key}' of '${entityName}' is not filterable`,
+          fieldPath,
+        );
+      }
       conditions.push(...parseLeafConditions(key, fieldDef, value, fieldPath));
       continue;
     }
 
     if (relationDef) {
+      if (relationDef.filterable === false) {
+        throw new QueryValidationError(
+          `Relation '${key}' of '${entityName}' is not filterable`,
+          fieldPath,
+        );
+      }
       const wrapperOps = parseRelationWrapper(value);
       if (wrapperOps) {
         for (const { op, nestedValue } of wrapperOps) {
@@ -462,6 +474,12 @@ function parseOrderBy(
         path,
       );
     }
+    if (entity.fields[raw].sortable === false) {
+      throw new QueryValidationError(
+        `orderBy field '${raw}' of '${entity.name}' is not sortable`,
+        path,
+      );
+    }
     return { field: raw, order: "desc" };
   }
   if (!isPlainObject(raw)) {
@@ -477,6 +495,12 @@ function parseOrderBy(
   if (!entity.fields[field]) {
     throw new QueryValidationError(
       `orderBy field '${field}' is not a known field of '${entity.name}'`,
+      `${path}.field`,
+    );
+  }
+  if (entity.fields[field].sortable === false) {
+    throw new QueryValidationError(
+      `orderBy field '${field}' of '${entity.name}' is not sortable`,
       `${path}.field`,
     );
   }
@@ -512,6 +536,12 @@ function parseSelect(
         `${path}.${k}`,
       );
     }
+    if (entity.fields[k].selectable === false) {
+      throw new QueryValidationError(
+        `select: field '${k}' of '${entity.name}' is not selectable`,
+        `${path}.${k}`,
+      );
+    }
     fields.push(k);
   }
   return { kind: "fields", fields };
@@ -541,6 +571,12 @@ function parseInclude(
         `${path}.${relName}`,
       );
     }
+    if (relDef.includable === false) {
+      throw new QueryValidationError(
+        `include: relation '${relName}' of '${entity.name}' is not includable`,
+        `${path}.${relName}`,
+      );
+    }
     if (spec === "all") {
       relations[relName] = { kind: "all" };
       continue;
@@ -558,6 +594,12 @@ function parseInclude(
       if (!targetEntity.fields[k]) {
         throw new QueryValidationError(
           `include.${relName}.${k} is not a known field of '${targetEntity.name}'`,
+          `${path}.${relName}.${k}`,
+        );
+      }
+      if (targetEntity.fields[k].selectable === false) {
+        throw new QueryValidationError(
+          `include.${relName}.${k}: field of '${targetEntity.name}' is not selectable`,
           `${path}.${relName}.${k}`,
         );
       }
@@ -585,6 +627,7 @@ function parseShowFlag(
 
 function parsePagination(
   raw: PaginationInput,
+  entity: EntityDefinition,
   path: string,
 ): ParsedPagination {
   if (raw === "all") {
@@ -616,9 +659,14 @@ function parsePagination(
       `${path}.perPage`,
     );
   }
+  // POLICY: clamp (not reject) an over-large page to the entity's max.
+  const cappedPerPage =
+    entity.maxPerPage !== undefined && perPage > entity.maxPerPage
+      ? entity.maxPerPage
+      : perPage;
   const showNumber = parseShowFlag(obj.showNumber, "showNumber", path);
   const showTotal = parseShowFlag(obj.showTotal, "showTotal", path);
-  return { kind: "page", page, perPage, showNumber, showTotal };
+  return { kind: "page", page, perPage: cappedPerPage, showNumber, showTotal };
 }
 
 // Avoid leaning on a circular type import in parseLeafCondition's signature.
@@ -664,7 +712,7 @@ export function parseQuery(
     parsed.select = parseSelect(input.select, entity, "select");
   }
   if (input.pagination !== undefined) {
-    parsed.pagination = parsePagination(input.pagination, "pagination");
+    parsed.pagination = parsePagination(input.pagination, entity, "pagination");
   }
 
   return parsed;
