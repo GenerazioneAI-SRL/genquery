@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "ORM-agnostic JSON query language with pluggable adapters (TypeORM, Prisma)",
   "license": "BSD-3-Clause",
   "repository": {
@@ -42,6 +42,11 @@
       "types": "./dist/adapters/prisma/index.d.ts",
       "import": "./dist/adapters/prisma/index.js",
       "require": "./dist/adapters/prisma/index.js"
+    },
+    "./paginate": {
+      "types": "./dist/paginate/index.d.ts",
+      "import": "./dist/paginate/index.js",
+      "require": "./dist/paginate/index.js"
     }
   },
   "files": [
@@ -59,13 +64,17 @@
   },
   "peerDependencies": {
     "typeorm": ">=0.3.0",
-    "@prisma/client": ">=5.0.0"
+    "@prisma/client": ">=5.0.0",
+    "class-transformer": ">=0.5.0"
   },
   "peerDependenciesMeta": {
     "typeorm": {
       "optional": true
     },
     "@prisma/client": {
+      "optional": true
+    },
+    "class-transformer": {
       "optional": true
     }
   },
