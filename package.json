@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "ORM-agnostic JSON query language with pluggable adapters (TypeORM, Prisma)",
   "license": "BSD-3-Clause",
   "repository": {
@@ -84,5 +84,18 @@
     "sqlite3": "^5.1.7",
     "typeorm": "^0.3.20",
     "typescript": "^5.4.0"
+  },
+  "typesVersions": {
+    "*": {
+      "paginate": [
+        "dist/paginate/index.d.ts"
+      ],
+      "prisma": [
+        "dist/adapters/prisma/index.d.ts"
+      ],
+      "typeorm": [
+        "dist/adapters/typeorm/index.d.ts"
+      ]
+    }
   }
 }
