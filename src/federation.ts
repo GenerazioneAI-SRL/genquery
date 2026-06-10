@@ -39,6 +39,14 @@ export interface FederatedModelShape {
   relations: readonly string[];
   /** Scalar/enum field names (FK candidates live here). */
   scalars: readonly string[];
+  /**
+   * Cross-service "soft-FK" includes declared CO-LOCATED with the model (resource
+   * manifest), key → target model. Resolves semantic aliases whose key name does NOT
+   * match the model (es. `customer` → 'Juridical') — cases the `<key>Id`+`UpperFirst(key)`
+   * convention can't infer. Harvested into the index from the manifests; takes precedence
+   * over the global {@link AliasMap} but yields to a call-level `override`. fk default `<key>Id`.
+   */
+  links?: Readonly<Record<string, FederationAlias>>;
 }
 
 export interface FederatedServiceShape {
@@ -164,7 +172,8 @@ export type AlwaysIncludeItem =
  * (federated) plans, using convention-driven discovery over the index.
  *
  * Risoluzione per chiave (in ordine): relazione locale reale → override esplicito
- * → aliasMap globale → convenzione (`<key>Id` scalare + model `UpperFirst(key)`).
+ * → link del manifest (`local.links`, co-locato col model) → aliasMap globale →
+ * convenzione (`<key>Id` scalare + model `UpperFirst(key)`).
  * Owner del model target: il servizio del cmd se lo possiede (soft-FK same-service),
  * altrimenti l'unico owner esterno; più owner → serve override/alias. Chiavi non
  * federabili restano nel localInclude → il motore locale emette il suo errore
@@ -199,11 +208,11 @@ export function planFederatedIncludes(opts: {
   const remote: FederatedIncludePlan[] = [];
   const planned = new Set<string>();
 
-  const aliasOf = (key: string): { model: string; fk?: string } | undefined => {
-    const a = aliasMap?.[key];
-    if (a == null) return undefined;
-    return typeof a === "string" ? { model: a } : a;
-  };
+  const norm = (a: FederationAlias | undefined): { model: string; fk?: string } | undefined =>
+    a == null ? undefined : typeof a === "string" ? { model: a } : a;
+  const aliasOf = (key: string) => norm(aliasMap?.[key]);
+  // Manifest-declared link (co-located with the model) — più specifico dell'aliasMap globale.
+  const linkOf = (key: string) => norm(local.links?.[key]);
 
   // explicitNested: shape annidata forzata (da alwaysInclude object) che ha
   // precedenza sul nested ricavato dal value del client.
@@ -222,11 +231,12 @@ export function planFederatedIncludes(opts: {
       return;
     }
 
-    // 2) Override esplicito > aliasMap globale > convenzione.
+    // 2) Override esplicito > link del manifest (per-model) > aliasMap globale > convenzione.
     const override = overrides?.[key];
+    const link = linkOf(key);
     const alias = aliasOf(key);
-    const fk = override?.fk ?? alias?.fk ?? `${key}Id`;
-    const targetModel = override?.model ?? alias?.model ?? upperFirst(key);
+    const fk = override?.fk ?? link?.fk ?? alias?.fk ?? `${key}Id`;
+    const targetModel = override?.model ?? link?.model ?? alias?.model ?? upperFirst(key);
     if (local.scalars.includes(fk)) {
       let targetService = override?.service;
       if (!targetService) {

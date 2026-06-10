@@ -238,6 +238,55 @@ test("aliasMap con fk esplicito + override vince su aliasMap", () => {
   assert.equal(plan.remote[0].targetModel, "JuridicalIndividual");
 });
 
+test("manifest links risolve chiavi semantiche senza aliasMap globale", () => {
+  // links co-locati col model (harvestati dal resource manifest) — niente aliasMap.
+  const certet: any = {
+    service: "skillCertet",
+    models: [{
+      name: "EmployeePlanning",
+      relations: [],
+      scalars: ["id", "customerId", "submitterId"],
+      links: { customer: "Juridical", submitter: { model: "JuridicalIndividual" } },
+    }],
+  };
+  const idx = buildFederationIndex([certet, id]);
+  // aliasMap globale in CONFLITTO col link → il link (co-locato) deve vincere.
+  const plan = planFederatedIncludes({
+    index: idx, service: "skillCertet", model: "EmployeePlanning",
+    include: { customer: true, submitter: true },
+    aliasMap: { customer: "City" },
+  });
+  const byKey = Object.fromEntries(plan.remote.map((r) => [r.key, r]));
+  assert.equal(byKey.customer.targetModel, "Juridical"); // link batte aliasMap (City)
+  assert.equal(byKey.customer.fk, "customerId");
+  assert.equal(byKey.submitter.targetModel, "JuridicalIndividual");
+  assert.equal(byKey.submitter.fk, "submitterId");
+});
+
+test("override vince sul link del manifest, il link vince sull'aliasMap globale", () => {
+  const svc: any = {
+    service: "skillCertet",
+    models: [{
+      name: "Doc",
+      relations: [],
+      scalars: ["id", "customerId", "ownerJiId"],
+      links: { customer: "Juridical" },
+    }],
+  };
+  const idx = buildFederationIndex([svc, id]);
+  // link (Juridical) batte aliasMap (City); override batte tutto.
+  const plan = planFederatedIncludes({
+    index: idx, service: "skillCertet", model: "Doc",
+    include: { customer: true, owner: true },
+    aliasMap: { customer: "City", owner: { model: "JuridicalIndividual", fk: "ownerJiId" } },
+    overrides: { customer: { service: "skillID", model: "JuridicalIndividual", fk: "ownerJiId" } },
+  });
+  const byKey = Object.fromEntries(plan.remote.map((r) => [r.key, r]));
+  assert.equal(byKey.customer.targetModel, "JuridicalIndividual"); // override
+  assert.equal(byKey.customer.fk, "ownerJiId");
+  assert.equal(byKey.owner.targetModel, "JuridicalIndividual"); // aliasMap (nessun link 'owner')
+});
+
 test("alwaysInclude annidato inoltra include al target (ripristina nested individual)", () => {
   const hr = toFederatedShape("skillHr", { models: [{ name: "Tempbadge", fields: [
     { name: "id", kind: "scalar" }, { name: "juridicalIndividualId", kind: "scalar" },
