@@ -138,20 +138,40 @@ export function pluralizeCamel(model: string): string {
   return base + "s";
 }
 
+/** Target del federated include per un alias semantico (key ≠ nome model). */
+export type FederationAlias = string | { model: string; fk?: string };
+
+/**
+ * Alias map GLOBALE key → model target. Dichiarata UNA volta (gateway), risolve
+ * automaticamente le chiavi semantiche il cui nome non combacia col model:
+ *   { customer: 'Juridical', submitter: 'JuridicalIndividual' }   (fk default '<key>Id')
+ *   { owner: { model: 'JuridicalIndividual', fk: 'ownerJiId' } }
+ */
+export type AliasMap = Record<string, FederationAlias>;
+
+/**
+ * Elemento di `alwaysInclude`: una chiave (string) oppure una chiave con shape
+ * annidata da inoltrare al target — es. `{ key: 'juridicalIndividual',
+ * include: { individual: true } }` per ripristinare un nested che i vecchi
+ * populate settavano sempre.
+ */
+export type AlwaysIncludeItem =
+  | string
+  | { key: string; include?: Record<string, unknown>; select?: Record<string, unknown> };
+
 /**
  * Split a client include tree into the locally-resolvable part and the remote
  * (federated) plans, using convention-driven discovery over the index.
  *
- * - A key matching a real local relation stays local (engine resolves it).
- * - A key with a matching local scalar `<key>Id` and a model `UpperFirst(key)`
- *   known to the index becomes a remote plan. Owner resolution: the cmd's own
- *   service wins if it owns the model (soft-FK within one service), otherwise
- *   the single foreign owner; multiple foreign owners require an override.
- * - Anything else stays local untouched: the local engine emits its own
- *   precise validation error (federation must not swallow it).
+ * Risoluzione per chiave (in ordine): relazione locale reale → override esplicito
+ * → aliasMap globale → convenzione (`<key>Id` scalare + model `UpperFirst(key)`).
+ * Owner del model target: il servizio del cmd se lo possiede (soft-FK same-service),
+ * altrimenti l'unico owner esterno; più owner → serve override/alias. Chiavi non
+ * federabili restano nel localInclude → il motore locale emette il suo errore
+ * standard (la federazione NON lo inghiotte).
  *
- * `alwaysInclude` lists federated keys to resolve even when the client did not
- * ask for them (back-compat with gateways that always enrich).
+ * `alwaysInclude` = chiavi federate da risolvere anche se il client non le chiede
+ * (retro-compat con i gateway che arricchivano sempre); supporta shape annidata.
  */
 export function planFederatedIncludes(opts: {
   index: FederationIndex;
@@ -160,11 +180,13 @@ export function planFederatedIncludes(opts: {
   /** Local DMMF PascalCase model returned by the cmd. */
   model: string;
   include?: Record<string, unknown>;
-  alwaysInclude?: readonly string[];
-  /** Per-key explicit targets for ambiguous/unconventional cases. */
+  alwaysInclude?: readonly AlwaysIncludeItem[];
+  /** Alias semantici globali (key → model target). */
+  aliasMap?: AliasMap;
+  /** Per-key explicit targets for ambiguous/unconventional cases (vince su aliasMap). */
   overrides?: Record<string, { service: string; model?: string; fk?: string }>;
 }): FederationPlan {
-  const { index, service, model, include, alwaysInclude, overrides } = opts;
+  const { index, service, model, include, alwaysInclude, aliasMap, overrides } = opts;
   const local = index.modelOf(service, model);
   if (!local) {
     throw new FederationPlanError(
@@ -177,7 +199,20 @@ export function planFederatedIncludes(opts: {
   const remote: FederatedIncludePlan[] = [];
   const planned = new Set<string>();
 
-  const planKey = (key: string, value: unknown, demanded: boolean): void => {
+  const aliasOf = (key: string): { model: string; fk?: string } | undefined => {
+    const a = aliasMap?.[key];
+    if (a == null) return undefined;
+    return typeof a === "string" ? { model: a } : a;
+  };
+
+  // explicitNested: shape annidata forzata (da alwaysInclude object) che ha
+  // precedenza sul nested ricavato dal value del client.
+  const planKey = (
+    key: string,
+    value: unknown,
+    demanded: boolean,
+    explicitNested?: { include?: Record<string, unknown>; select?: Record<string, unknown> },
+  ): void => {
     if (planned.has(key)) return;
     planned.add(key);
 
@@ -187,10 +222,11 @@ export function planFederatedIncludes(opts: {
       return;
     }
 
-    // 2) Convention: scalar FK `<key>Id` (overridable) + known model.
+    // 2) Override esplicito > aliasMap globale > convenzione.
     const override = overrides?.[key];
-    const fk = override?.fk ?? `${key}Id`;
-    const targetModel = override?.model ?? upperFirst(key);
+    const alias = aliasOf(key);
+    const fk = override?.fk ?? alias?.fk ?? `${key}Id`;
+    const targetModel = override?.model ?? alias?.model ?? upperFirst(key);
     if (local.scalars.includes(fk)) {
       let targetService = override?.service;
       if (!targetService) {
@@ -202,21 +238,24 @@ export function planFederatedIncludes(opts: {
         } else if (owners.length > 1) {
           throw new FederationPlanError(
             `Federation: include '${key}' on ${service}.${model} is ambiguous — model '${targetModel}' is owned by ` +
-              `[${owners.map((o) => o.service).join(", ")}]. Add an override for '${key}'.`,
+              `[${owners.map((o) => o.service).join(", ")}]. Add an override/alias for '${key}'.`,
             key,
           );
         }
       }
       if (targetService) {
-        const nestedSrc =
-          value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
-        const nested =
-          nestedSrc && (nestedSrc.include || nestedSrc.select)
-            ? {
-                include: nestedSrc.include as Record<string, unknown> | undefined,
-                select: nestedSrc.select as Record<string, unknown> | undefined,
-              }
-            : undefined;
+        let nested = explicitNested;
+        if (!nested) {
+          const src =
+            value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+          nested =
+            src && (src.include || src.select)
+              ? {
+                  include: src.include as Record<string, unknown> | undefined,
+                  select: src.select as Record<string, unknown> | undefined,
+                }
+              : undefined;
+        }
         remote.push({ key, fk, targetService, targetModel, nested });
         return;
       }
@@ -227,7 +266,7 @@ export function planFederatedIncludes(opts: {
     if (demanded) {
       throw new FederationPlanError(
         `Federation: alwaysInclude '${key}' on ${service}.${model} matches no local relation, ` +
-          `no scalar FK '${fk}', or no known model '${targetModel}'`,
+          `no scalar FK '${fk}', no alias, or no known model '${targetModel}'`,
         key,
       );
     }
@@ -235,10 +274,18 @@ export function planFederatedIncludes(opts: {
   };
 
   for (const [key, value] of Object.entries(include ?? {})) {
-    if (value === false || value == null) continue; // include disattivato dal client
+    // include disattivato dal client: marcalo come gestito così alwaysInclude NON
+    // lo resuscita (rispetta la volontà esplicita del client di escluderlo).
+    if (value === false || value == null) {
+      planned.add(key);
+      continue;
+    }
     planKey(key, value, false);
   }
-  for (const key of alwaysInclude ?? []) planKey(key, true, true);
+  for (const item of alwaysInclude ?? []) {
+    if (typeof item === "string") planKey(item, true, true);
+    else planKey(item.key, true, true, { include: item.include, select: item.select });
+  }
 
   return {
     localInclude: Object.keys(localInclude).length ? localInclude : undefined,
@@ -271,7 +318,12 @@ export function mergeFederatedRows(
   targetRows: readonly any[],
 ): void {
   const byId = new Map<string, any>();
-  for (const t of targetRows) if (t?.id != null) byId.set(String(t.id), t);
+  // keep-first: un owner che ritorna id duplicati (chunk sovrapposti/bug) è deterministico.
+  for (const t of targetRows) {
+    if (t?.id == null) continue;
+    const k = String(t.id);
+    if (!byId.has(k)) byId.set(k, t);
+  }
   for (const row of rows) {
     if (!row || typeof row !== "object") continue;
     const fkVal = row[plan.fk];

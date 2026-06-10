@@ -200,3 +200,75 @@ test("pluralizeCamel: convenzioni inglesi di base", () => {
   assert.equal(pluralizeCamel("Address"), "addresses");
   assert.equal(pluralizeCamel("Structure"), "structures");
 });
+
+// ── aliasMap / alwaysInclude annidato / include:false / keep-first ──────────
+
+test("aliasMap risolve chiavi semantiche (key ≠ model) senza override", () => {
+  const certet = toFederatedShape("skillCertet", {
+    models: [{ name: "EmployeePlanning", fields: [
+      { name: "id", kind: "scalar" },
+      { name: "customerId", kind: "scalar" },
+      { name: "submitterId", kind: "scalar" },
+    ]}],
+  });
+  const idx = buildFederationIndex([certet, id]);
+  const plan = planFederatedIncludes({
+    index: idx, service: "skillCertet", model: "EmployeePlanning",
+    include: { customer: true, submitter: true },
+    aliasMap: { customer: "Juridical", submitter: "JuridicalIndividual" },
+  });
+  const byKey = Object.fromEntries(plan.remote.map((r) => [r.key, r]));
+  assert.equal(byKey.customer.targetModel, "Juridical");
+  assert.equal(byKey.customer.fk, "customerId");
+  assert.equal(byKey.submitter.targetModel, "JuridicalIndividual");
+  assert.equal(byKey.submitter.fk, "submitterId");
+});
+
+test("aliasMap con fk esplicito + override vince su aliasMap", () => {
+  const svc = toFederatedShape("skillX", { models: [{ name: "Doc", fields: [
+    { name: "id", kind: "scalar" }, { name: "ownerJiId", kind: "scalar" },
+  ]}]});
+  const idx = buildFederationIndex([svc, id]);
+  const plan = planFederatedIncludes({
+    index: idx, service: "skillX", model: "Doc",
+    include: { owner: true },
+    aliasMap: { owner: { model: "JuridicalIndividual", fk: "ownerJiId" } },
+  });
+  assert.equal(plan.remote[0].fk, "ownerJiId");
+  assert.equal(plan.remote[0].targetModel, "JuridicalIndividual");
+});
+
+test("alwaysInclude annidato inoltra include al target (ripristina nested individual)", () => {
+  const hr = toFederatedShape("skillHr", { models: [{ name: "Tempbadge", fields: [
+    { name: "id", kind: "scalar" }, { name: "juridicalIndividualId", kind: "scalar" },
+  ]}]});
+  const idx = buildFederationIndex([hr, id]);
+  const plan = planFederatedIncludes({
+    index: idx, service: "skillHr", model: "Tempbadge",
+    alwaysInclude: [{ key: "juridicalIndividual", include: { individual: true } }],
+  });
+  assert.equal(plan.remote.length, 1);
+  assert.deepEqual(plan.remote[0].nested, { include: { individual: true }, select: undefined });
+});
+
+test("include:false NON viene resuscitato da alwaysInclude", () => {
+  const hr = toFederatedShape("skillHr", { models: [{ name: "Tempbadge", fields: [
+    { name: "id", kind: "scalar" }, { name: "juridicalIndividualId", kind: "scalar" },
+  ]}]});
+  const idx = buildFederationIndex([hr, id]);
+  const plan = planFederatedIncludes({
+    index: idx, service: "skillHr", model: "Tempbadge",
+    include: { juridicalIndividual: false },
+    alwaysInclude: ["juridicalIndividual"],
+  });
+  assert.equal(plan.remote.length, 0);
+  assert.equal(plan.localInclude, undefined);
+});
+
+test("mergeFederatedRows keep-first su id duplicati del target", () => {
+  const rows = [{ id: "a", jiId: "x" }];
+  mergeFederatedRows(rows, { key: "ji", fk: "jiId" }, [
+    { id: "x", v: 1 }, { id: "x", v: 2 },
+  ]);
+  assert.equal((rows[0] as any).ji.v, 1);
+});

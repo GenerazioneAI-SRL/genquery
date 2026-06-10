@@ -19,4 +19,7 @@ export {
   type FederationIndex,
   type FederatedIncludePlan,
   type FederationPlan,
+  type FederationAlias,
+  type AliasMap,
+  type AlwaysIncludeItem,
 } from "./federation";
