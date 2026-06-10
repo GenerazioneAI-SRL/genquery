@@ -156,6 +156,14 @@ A string is searched against a specified regex. The regex is in the language nat
 			value: "AFISCALCODE123"
 		},
 
+		// IN (membership). An ARRAY value on a string/id/enum/number field
+		// translates to SQL IN. Elements are validated per the field type
+		// (enum elements must be one of the allowed values). Empty arrays are
+		// rejected. Not supported on boolean/date fields.
+
+		id: ["uuid-1", "uuid-2", "uuid-3"],
+		exampleEnumField: ["allowedValue1", "allowedValue2"],
+
 		// date
 
 		date: dateTimeType | presenceCheckType | { before: dateTimeType, after: dateTimeType }, // either before or after can be omitted from the object

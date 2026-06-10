@@ -67,6 +67,8 @@ export interface StringSearchObjectInput {
 
 export type StringSearchInput =
   | string
+  /** Membership: `field: [v1, v2, ...]` → IN. Empty arrays are rejected. */
+  | readonly string[]
   | StringSearchObjectInput
   | NullCheckInput
   | EmptyCheckInput;
@@ -78,7 +80,12 @@ export interface DateRangeInput {
 
 export type DateSearchInput = DateTimeInput | DateRangeInput | NullCheckInput;
 
-export type NumberSearchInput = number | NumericComparisonInput | NullCheckInput;
+export type NumberSearchInput =
+  | number
+  /** Membership: `field: [v1, v2, ...]` → IN. Empty arrays are rejected. */
+  | readonly number[]
+  | NumericComparisonInput
+  | NullCheckInput;
 
 export type BoolSearchInput = boolean | NullCheckInput;
 

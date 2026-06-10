@@ -454,3 +454,49 @@ test("model filter restricts entities", () => {
   assert.equal(Object.keys(schema.entities).length, 2);
   assert.equal(schema.entities.Profile, undefined);
 });
+
+// ── IN (membership): `field: [v1, v2, ...]` ────────────────────────────────
+
+test("array on string field → IN", () => {
+  const engine = makeEngine();
+  const parsed = engine.parse(
+    { searchBy: { email: ["a@x.it", "b@x.it"] } },
+    "User",
+  );
+  const args = engine.runParsed(parsed, null as never);
+  assert.deepEqual(args, { where: { email: { in: ["a@x.it", "b@x.it"] } } });
+});
+
+test("array on enum field validates allowed values", () => {
+  const engine = makeEngine();
+  const parsed = engine.parse({ searchBy: { role: ["admin", "user"] } }, "User");
+  const args = engine.runParsed(parsed, null as never);
+  assert.deepEqual(args, { where: { role: { in: ["admin", "user"] } } });
+  assert.throws(
+    () => engine.parse({ searchBy: { role: ["NOPE"] } }, "User"),
+    QueryValidationError,
+  );
+});
+
+test("array on number field → IN; mixed types rejected", () => {
+  const engine = makeEngine();
+  const parsed = engine.parse({ searchBy: { age: [18, 21] } }, "User");
+  const args = engine.runParsed(parsed, null as never);
+  assert.deepEqual(args, { where: { age: { in: [18, 21] } } });
+  assert.throws(
+    () => engine.parse({ searchBy: { age: ["18"] } }, "User"),
+    QueryValidationError,
+  );
+});
+
+test("empty array and date/bool arrays are rejected", () => {
+  const engine = makeEngine();
+  assert.throws(
+    () => engine.parse({ searchBy: { email: [] } }, "User"),
+    QueryValidationError,
+  );
+  assert.throws(
+    () => engine.parse({ searchBy: { createdAt: ["2024-01-01"] } }, "User"),
+    QueryValidationError,
+  );
+});

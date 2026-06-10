@@ -397,7 +397,56 @@ function parseLeafConditions(
     if (parsed.empty) out.push({ kind: "empty", field, check: parsed.empty });
     return out;
   }
+  // Membership: `field: [v1, v2, ...]` → IN. string/id/enum/number only.
+  if (Array.isArray(value)) {
+    return [parseInCondition(field, def, value, path)];
+  }
   return [parseLeafConditionTyped(field, def, value, path)];
+}
+
+function parseInCondition(
+  field: string,
+  def: FieldDefinition,
+  value: unknown[],
+  path: string,
+): ParsedFieldCondition {
+  if (def.type === "boolean" || def.type === "date") {
+    throw new QueryValidationError(
+      `Array (IN) search is not supported on ${def.type} fields`,
+      path,
+    );
+  }
+  if (value.length === 0) {
+    throw new QueryValidationError(
+      "IN list must contain at least one value",
+      path,
+    );
+  }
+  const values = value.map((v, i): string | number => {
+    if (def.type === "number") {
+      if (typeof v !== "number" || Number.isNaN(v)) {
+        throw new QueryValidationError(
+          "IN list on a number field must contain only numbers",
+          `${path}[${i}]`,
+        );
+      }
+      return v;
+    }
+    if (typeof v !== "string") {
+      throw new QueryValidationError(
+        `IN list on a ${def.type} field must contain only strings`,
+        `${path}[${i}]`,
+      );
+    }
+    if (def.type === "enum" && !def.values.includes(v)) {
+      throw new QueryValidationError(
+        `Value '${v}' is not one of the allowed enum values`,
+        `${path}[${i}]`,
+      );
+    }
+    return v;
+  });
+  return { kind: "in", field, values };
 }
 
 function parseLeafConditionTyped(

@@ -83,6 +83,8 @@ function buildCondition(
       return { [cond.field]: cond.search.value };
     case "id":
       return { [cond.field]: cond.search.value };
+    case "in":
+      return { [cond.field]: { in: cond.values } };
     case "null":
       return {
         [cond.field]: cond.check.isNull ? null : { not: null },

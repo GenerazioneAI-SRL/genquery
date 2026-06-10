@@ -169,6 +169,13 @@ function buildLeaf(
         params: { [p]: cond.search.value },
       };
     }
+    case "in": {
+      const p = ctx.params.next();
+      return {
+        sql: `${qualify(ctx.currentAlias, cond.field)} IN (:...${p})`,
+        params: { [p]: cond.values },
+      };
+    }
     case "null": {
       const col = qualify(ctx.currentAlias, cond.field);
       return {
