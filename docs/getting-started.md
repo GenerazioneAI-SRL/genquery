@@ -11,75 +11,53 @@
 npm install @generazioneai/genquery
 ```
 
-If you use the TypeORM adapter, add it as a peer dependency:
+If you use the Prisma adapter, add `@prisma/client` as a peer dependency:
 
 ```bash
-npm install typeorm reflect-metadata
+npm install @prisma/client
 ```
 
 ## Setup
 
-### 1. Enable decorators in tsconfig.json
+### 1. Derive the Schema from Prisma
 
-Required only for TypeORM entities, not for genquery itself:
-
-```json
-{
-  "compilerOptions": {
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
-  }
-}
-```
-
-### 2. Derive the Schema from TypeORM
-
-If you use TypeORM, you don't write a schema — `schemaFromTypeORM` reads your entity classes' metadata (columns, relations, primary keys) and produces one:
+If you use Prisma, you don't write a schema — `schemaFromPrisma` reads your Prisma DMMF datamodel (models, fields, relations, primary keys) and produces one:
 
 ```typescript
-import "reflect-metadata";
-import { DataSource } from "typeorm";
-import { schemaFromTypeORM } from "@generazioneai/genquery/typeorm";
+import { Prisma } from "@prisma/client";
+import { schemaFromPrisma } from "@generazioneai/genquery/prisma";
 
-const dataSource = new DataSource({
-  type: "postgres",
-  // ...
-  entities: [User, Post],
-});
-
-await dataSource.initialize();   // required before deriving
-
-const schema = schemaFromTypeORM(dataSource);
+const schema = schemaFromPrisma(Prisma.dmmf.datamodel);
 ```
 
-Restrict to specific entities:
+Restrict to specific models:
 
 ```typescript
-const schema = schemaFromTypeORM(dataSource, { entities: [User, Post] });
+const schema = schemaFromPrisma(Prisma.dmmf.datamodel, { models: ["User", "Post"] });
 ```
 
-Override fields whose column type isn't auto-detected (e.g. `jsonb`, custom transformers):
+Override fields whose scalar type isn't auto-detected (e.g. `Json`, `Bytes`):
 
 ```typescript
-const schema = schemaFromTypeORM(dataSource, {
+const schema = schemaFromPrisma(Prisma.dmmf.datamodel, {
   overrides: { User: { preferences: "string" } },
 });
 ```
 
 Type mapping (default):
 
-| TypeORM column type | genquery `FieldType` |
+| Prisma scalar type | genquery `FieldType` |
 |---|---|
-| `String`, `varchar`, `text`, `char`, `uuid`, … | `string` |
-| `Number`, `int`, `bigint`, `numeric`, `decimal`, `float`, `double`, … | `number` |
-| `Boolean`, `bool` | `boolean` |
-| `Date`, `timestamp`, `timestamptz`, `datetime`, `date`, `time`, … | `date` |
-| `enum` / `simple-enum` with string members | `enum` (with `values` extracted) |
-| anything else | skipped (use `overrides` or `fallback`) |
+| `String` | `string` |
+| `Int`, `BigInt`, `Float`, `Decimal` | `number` |
+| `Boolean` | `boolean` |
+| `DateTime` | `date` |
+| an `enum` type | `enum` (with `values` extracted) |
+| anything else (`Json`, `Bytes`, …) | skipped (use `overrides`) |
 
 #### Declaring a schema by hand
 
-If you don't use TypeORM, or want full control, declare a schema literal instead:
+If you don't use Prisma, or want full control, declare a schema literal instead:
 
 ```typescript
 import { Schema } from "@generazioneai/genquery";
@@ -103,29 +81,43 @@ const schema: Schema = {
 };
 ```
 
-### 3. Create the adapter and engine
+### 2. Create the adapter and engine
 
 ```typescript
 import { GenQueryEngine } from "@generazioneai/genquery";
-import { TypeORMAdapter } from "@generazioneai/genquery/typeorm";
+import { PrismaAdapter } from "@generazioneai/genquery/prisma";
 
-const adapter = new TypeORMAdapter(schema);
+const adapter = new PrismaAdapter(schema);
 const engine  = new GenQueryEngine({ adapter });   // schema is read from the adapter
 ```
 
 There's only one source of truth — the schema lives on the adapter, and the engine reads it from there.
 
-### 4. Wire it to a request handler
+#### One-line shortcut
+
+`createPrismaEngine` does all three steps (`schemaFromPrisma` → `new PrismaAdapter` → `new GenQueryEngine`) in one call:
+
+```typescript
+import { Prisma } from "@prisma/client";
+import { createPrismaEngine } from "@generazioneai/genquery/prisma";
+
+const engine = createPrismaEngine(Prisma.dmmf.datamodel, {
+  schema:  { models: ["User", "Post"] },   // schemaFromPrisma options
+  adapter: { parallelCount: false },        // PrismaAdapter options
+});
+```
+
+### 3. Wire it to a request handler
+
+The Prisma adapter needs to know the root entity, and you pass it a Prisma **model delegate** (`prisma.user`):
 
 ```typescript
 import type { Request, Response } from "express";
 import { QueryValidationError } from "@generazioneai/genquery";
 
 export async function listUsers(req: Request, res: Response) {
-  const qb = userRepository.createQueryBuilder("User");
-
   try {
-    const { data, current, total } = await engine.run(req.body, "User", qb);
+    const { data, current, total } = await engine.run(req.body, "User", prisma.user);
     res.json({ data, current, total });
   } catch (e) {
     if (e instanceof QueryValidationError) {
@@ -137,14 +129,17 @@ export async function listUsers(req: Request, res: Response) {
 }
 ```
 
-The `req.body` is the `GenQueryInput` the frontend sends. The engine validates it, rejects unknown fields, builds the query, executes it, and returns `{ data, current?, total? }`. `current` / `total` are included when `pagination.showNumber` / `pagination.showTotal` are `true` (both default to `true`); set `showTotal: false` in the input to skip the extra `SELECT COUNT(*)` round-trip.
+The `req.body` is the `GenQueryInput` the frontend sends. The engine validates it, rejects unknown fields, builds the Prisma args, executes `findMany`, and returns `{ data, current?, total? }`. `current` / `total` are included when `pagination.showNumber` / `pagination.showTotal` are `true` (both default to `true`); set `showTotal: false` in the input to skip the extra parallel `count` round-trip.
 
-Need the raw `SelectQueryBuilder` instead (custom chaining, `.getRawMany()`, transactions)? Use `runParsed`:
+> The `rootEntity` string (`"User"`) is **required** for the Prisma adapter — a delegate doesn't expose its model name, so there is no 2-argument form of `engine.run`.
+
+Need the raw Prisma args instead (custom `findFirst`, transactions, merging with hand-written options)? Use `runParsed`, which builds the args object without executing:
 
 ```typescript
 const parsed = engine.parse(req.body, "User");
-const built  = engine.runParsed(parsed, qb);
-res.json(await built.getMany());
+const args   = engine.runParsed(parsed, prisma.user);
+// args === { where, orderBy, skip, take, include, select }
+res.json(await prisma.user.findMany(args));
 ```
 
 ## First query
@@ -161,10 +156,10 @@ Send this JSON body from the frontend:
 }
 ```
 
-The default string search mode is `splitword`, which splits the string on whitespace and matches any word case-insensitively (ILIKE). So `"mario rossi"` matches rows where the field contains `"mario"` OR `"rossi"`.
+The default string search mode is `splitword`, which splits the string on whitespace and matches any word case-insensitively (`contains` + `mode: "insensitive"`). So `"mario rossi"` matches rows where the field contains `"mario"` OR `"rossi"`.
 
 ## Next steps
 
 - [Query reference](query-reference.md) — all search modes, date ranges, OR conditions, include, select
-- [TypeORM adapter](typeorm-adapter.md) — adapter options, execution order, debugging
+- [Prisma adapter](prisma-adapter.md) — adapter options, build order, baseArgs, debugging
 - [Examples](examples.md) — realistic end-to-end examples

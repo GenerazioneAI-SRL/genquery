@@ -1,73 +1,69 @@
 # genquery
 
-ORM-agnostic JSON query language with pluggable adapters.
+ORM-agnostic JSON query language with a pluggable Prisma adapter.
 
-Frontends send a `GenQueryInput` object. The backend validates it against a `Schema` and an adapter translates the result into ORM operations. The first adapter targets TypeORM (PostgreSQL-flavored SQL).
+Frontends send a `GenQueryInput` object. The backend validates it against a `Schema` and an adapter translates the result into ORM operations. The shipped adapter targets Prisma.
 
 ## Install
 
 ```bash
 npm install @generazioneai/genquery
-# TypeORM adapter (optional)
-npm install typeorm
+# Prisma client (peer; you almost certainly already have it)
+npm install @prisma/client
 ```
 
-## Quick start (TypeORM)
+## Quick start (Prisma)
 
 ```typescript
-import "reflect-metadata";
-import { DataSource } from "typeorm";
-import { createTypeORMEngine } from "@generazioneai/genquery/typeorm";
+import { Prisma, PrismaClient } from "@prisma/client";
+import { createPrismaEngine } from "@generazioneai/genquery/prisma";
 
-// 1. Initialize TypeORM with your entity classes
-const dataSource = new DataSource({ /* ... */ entities: [User, Post] });
-await dataSource.initialize();
+const prisma = new PrismaClient();
 
-// 2. One line to set up the schema, adapter, and engine
-const engine = createTypeORMEngine(dataSource);
+// 1. One line to set up the schema (from the DMMF), adapter, and engine
+const engine = createPrismaEngine(Prisma.dmmf.datamodel);
 
-// 3. Run a query from a request body
-const qb = dataSource.getRepository(User).createQueryBuilder("User");
-
+// 2. Run a query from a request body against a model delegate
 const { data, current, total } = await engine.run(
   {
     searchBy: { firstName: "mario" },
     orderBy:  "createdAt",
     pagination: { page: 0, perPage: 20 },
   },
-  qb,   // target QueryBuilder — entity name + entity type both read from this
+  "User",        // root entity name — Prisma delegates don't expose it
+  prisma.user,   // target model delegate; entity type flows from this
 );
 // data:    User[]
 // current: data.length   (omitted if pagination.showNumber === false)
-// total:   match count   (via getManyAndCount; omitted if pagination.showTotal === false)
+// total:   match count   (via a parallel count; omitted if pagination.showTotal === false)
 ```
 
-`engine.run` is async and returns `{ data, current?, total? }`. `current` and `total` are populated according to `pagination.showNumber` / `pagination.showTotal` (both default to `true`); setting `showTotal: false` skips the extra `SELECT COUNT(*)`.
+`engine.run` is async and returns `{ data, current?, total? }`. `current` and `total` are populated according to `pagination.showNumber` / `pagination.showTotal` (both default to `true`); setting `showTotal: false` skips the extra `count`.
 
-`createTypeORMEngine` is a thin wrapper around `schemaFromTypeORM` → `new TypeORMAdapter` → `new GenQueryEngine`. The root entity (`"User"` in this case) is derived from `qb.expressionMap.mainAlias.metadata.name` at runtime, and the TS entity type is read from `SelectQueryBuilder<User>`. If you need to override or your adapter can't introspect, the 3-arg form still works: `await engine.run(input, "User", qb)`.
+`createPrismaEngine` is a thin wrapper around `schemaFromPrisma` → `new PrismaAdapter` → `new GenQueryEngine`. The root entity (`"User"`) must be passed explicitly — Prisma delegates don't expose their model name on a stable public API. The TS entity type is read from the delegate's `findMany` return.
 
-If you need raw `SelectQueryBuilder` access (custom chaining, `.getRawMany()`, transactions), parse separately and call `runParsed`, which returns the mutated builder without executing:
+If you only want the Prisma args object (custom chaining, transactions, your own `findMany` call), parse separately and call `runParsed`, which returns the args without executing:
 
 ```typescript
 const parsed = engine.parse(input, "User");
-const built  = engine.runParsed(parsed, qb);
-const rows   = await built.getRawMany();
+const args   = engine.runParsed(parsed, prisma.user);   // { where, orderBy, skip, take, include, ... }
+const rows   = await prisma.user.findMany(args);
 ```
 
 Need fine-grained control? You can still build it manually:
 
 ```typescript
-const schema  = schemaFromTypeORM(dataSource, { overrides: { User: { meta: "string" } } });
-const adapter = new TypeORMAdapter(schema, { paramPrefix: "q" });
+const schema  = schemaFromPrisma(Prisma.dmmf.datamodel, { overrides: { User: { meta: "string" } } });
+const adapter = new PrismaAdapter(schema, { parallelCount: false });
 const engine  = new GenQueryEngine({ adapter });   // schema is read from the adapter
 ```
 
-Or pass the same options to `createTypeORMEngine`:
+Or pass the same options to `createPrismaEngine`:
 
 ```typescript
-const engine = createTypeORMEngine(dataSource, {
+const engine = createPrismaEngine(Prisma.dmmf.datamodel, {
   schema:  { overrides: { User: { meta: "string" } } },
-  adapter: { paramPrefix: "q" },
+  adapter: { parallelCount: false },
 });
 ```
 
@@ -77,16 +73,16 @@ const engine = createTypeORMEngine(dataSource, {
 
 The `Schema` describes your data model independently of any ORM. The parser uses it to reject unknown fields; the adapter uses it to know which fields are dates vs strings vs relations.
 
-With TypeORM, derive it from the DataSource — no duplication:
+With Prisma, derive it from the generated DMMF — no duplication:
 
 ```typescript
-import { schemaFromTypeORM } from "@generazioneai/genquery/typeorm";
+import { schemaFromPrisma } from "@generazioneai/genquery/prisma";
 
-const schema = schemaFromTypeORM(dataSource);
-// optional: restrict to specific entities
-const schema = schemaFromTypeORM(dataSource, { entities: [User, Post] });
+const schema = schemaFromPrisma(Prisma.dmmf.datamodel);
+// optional: restrict to specific models
+const schema = schemaFromPrisma(Prisma.dmmf.datamodel, { models: ["User", "Post"] });
 // optional: override fields with non-standard column types
-const schema = schemaFromTypeORM(dataSource, {
+const schema = schemaFromPrisma(Prisma.dmmf.datamodel, {
   overrides: { User: { preferences: "string" } },
 });
 ```
@@ -114,12 +110,10 @@ const schema: Schema = {
 
 A `GenQueryInput` is a plain JSON object with five optional top-level keys.
 
-The entity type is inferred automatically from the `target` argument when it has a recognizable shape (e.g. a TypeORM `SelectQueryBuilder<User>`). No explicit generic is required — autocomplete and value-shape checking flow from the QueryBuilder's entity type:
+The entity type is inferred automatically from the `target` argument when it has a recognizable shape (a Prisma model delegate exposes `findMany(args?): Promise<T[]>`). No explicit generic is required — autocomplete and value-shape checking flow from the delegate's entity type:
 
 ```typescript
-const qb = dataSource.getRepository(User).createQueryBuilder("User");
-// qb is SelectQueryBuilder<User> — entity type flows into the call below
-
+// prisma.user is Prisma.UserDelegate — entity type flows into the call below
 await engine.run(
   {
     searchBy: {
@@ -134,13 +128,14 @@ await engine.run(
     select:  { firstName: true },                      // ✓ only primitive fields
     include: { posts: "all" },                         // ✓ only relations
   },
-  qb,
+  "User",
+  prisma.user,
 );
 ```
 
 The inference distinguishes fields (primitives → searchable / selectable) from relations (objects/arrays → includable / recursive search), and picks the right value shape per field type (string/number/boolean/Date/enum).
 
-If your target type doesn't expose the entity (e.g. an adapter whose target is `undefined`), the input falls back to a loose form where any key/value is accepted — the runtime parser still validates everything against the schema.
+If your target type doesn't expose the entity, the input falls back to a loose form where any key/value is accepted — the runtime parser still validates everything against the schema.
 
 Top-level keys:
 
@@ -156,20 +151,18 @@ Full query language reference: [docs/query-reference.md](docs/query-reference.md
 
 ### Engine
 
-`GenQueryEngine` is the public entry point. It asserts that the schema passed to it and the schema held by the adapter are the same instance.
+`GenQueryEngine` is the public entry point. It reads the schema from the adapter — there is one source of truth.
 
 ```typescript
 const engine = new GenQueryEngine({ adapter });   // schema comes from the adapter
 
 // parse + apply + execute → Promise<{ data, current?, total? }>
-await engine.run(input, target);
-// or explicit rootEntity:
 await engine.run(input, rootEntity, target);
 
-// parse only (requires explicit rootEntity — no target to infer from)
+// parse only (requires explicit rootEntity)
 const parsed = engine.parse(input, rootEntity);
 
-// apply a previously parsed query without executing (returns the raw target)
+// apply a previously parsed query without executing (returns the raw args object)
 engine.runParsed(parsed, target);
 ```
 
@@ -215,7 +208,7 @@ Parse failures throw `QueryValidationError` with a `path` field pointing to the 
 import { QueryValidationError } from "@generazioneai/genquery";
 
 try {
-  await engine.run(input, "User", qb);
+  await engine.run(input, "User", prisma.user);
 } catch (e) {
   if (e instanceof QueryValidationError) {
     console.error(e.path, e.message);
@@ -226,7 +219,7 @@ try {
 ## Examples
 
 See [docs/examples.md](docs/examples.md) for full worked examples covering:
-- String search modes (splitword, exact, nativeregex)
+- String search modes (splitword, exact — `nativeregex` is rejected by the Prisma adapter)
 - Date ranges
 - Numeric comparisons
 - OR conditions
@@ -253,7 +246,7 @@ See [docs/custom-adapter.md](docs/custom-adapter.md) for instructions.
 |------|----------|
 | [docs/getting-started.md](docs/getting-started.md) | Installation, setup, first query |
 | [docs/query-reference.md](docs/query-reference.md) | Full query language reference |
-| [docs/typeorm-adapter.md](docs/typeorm-adapter.md) | TypeORM adapter options and internals |
+| [docs/prisma-adapter.md](docs/prisma-adapter.md) | Prisma adapter options and internals |
 | [docs/custom-adapter.md](docs/custom-adapter.md) | Building a custom adapter |
 | [docs/examples.md](docs/examples.md) | End-to-end examples |
 | [spec.md](spec.md) | Source-of-truth wire format spec |

@@ -18,8 +18,8 @@ export interface CreatePrismaEngineOptions {
 }
 
 /**
- * One-line setup mirroring `createTypeORMEngine`: read the schema from a
- * Prisma DMMF datamodel, build the adapter and the engine.
+ * One-line setup: read the schema from a Prisma DMMF datamodel, build the
+ * adapter and the engine.
  *
  *   import { Prisma, PrismaClient } from "@prisma/client";
  *   const prisma = new PrismaClient();

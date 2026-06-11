@@ -3,8 +3,8 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "0.12.1",
-  "description": "ORM-agnostic JSON query language with pluggable adapters (TypeORM, Prisma)",
+  "version": "0.13.0",
+  "description": "ORM-agnostic JSON query language with a pluggable Prisma adapter",
   "license": "BSD-3-Clause",
   "repository": {
     "type": "git",
@@ -18,7 +18,7 @@
     "query",
     "query-builder",
     "orm",
-    "typeorm",
+    "prisma",
     "json-query",
     "dsl",
     "search",
@@ -32,11 +32,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.js"
-    },
-    "./typeorm": {
-      "types": "./dist/adapters/typeorm/index.d.ts",
-      "import": "./dist/adapters/typeorm/index.js",
-      "require": "./dist/adapters/typeorm/index.js"
     },
     "./prisma": {
       "types": "./dist/adapters/prisma/index.d.ts",
@@ -52,41 +47,26 @@
   ],
   "scripts": {
     "build": "tsc",
-    "build:dev": "tsc && rm -rf node_modules/typeorm",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test 'dist/tests/*.test.js'",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "typeorm": ">=0.3.0",
-    "@prisma/client": ">=5.0.0",
-    "class-transformer": ">=0.5.0"
+    "@prisma/client": ">=5.0.0"
   },
   "peerDependenciesMeta": {
-    "typeorm": {
-      "optional": true
-    },
     "@prisma/client": {
-      "optional": true
-    },
-    "class-transformer": {
       "optional": true
     }
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "reflect-metadata": "^0.2.2",
-    "sqlite3": "^5.1.7",
-    "typeorm": "^0.3.20",
     "typescript": "^5.4.0"
   },
   "typesVersions": {
     "*": {
       "prisma": [
         "dist/adapters/prisma/index.d.ts"
-      ],
-      "typeorm": [
-        "dist/adapters/typeorm/index.d.ts"
       ]
     }
   }

@@ -47,16 +47,16 @@ Both `mode` and `type` are accepted as the key name (the spec uses both).
 
 | Mode | Behavior |
 |------|----------|
-| `splitword` (default) | Splits value on whitespace, matches any word; uses `LIKE` or `ILIKE` per `caseSensitive` |
-| `exact` | Exact string match. With `contained: true`, uses `LIKE '%value%'` pattern. Operator picked per `caseSensitive` |
-| `nativeregex` | Passes value to the DB regex operator (`~` if `caseSensitive: true`, `~*` otherwise) on PostgreSQL |
+| `splitword` (default) | Splits value on whitespace, matches any word; case-insensitive `contains` per word unless `caseSensitive` |
+| `exact` | Exact string match (`equals`). With `contained: true`, becomes a `contains` substring match. Case-insensitive unless `caseSensitive` |
+| `nativeregex` | Accepted by the parser, but **rejected by the Prisma adapter** (no portable regex operator in a Prisma `where`). Reserved for a future SQL adapter |
 
 #### Flags
 
 | Flag | Default | Effect |
 |------|---------|--------|
-| `contained` | `false` | If `true`, value is wrapped in `%...%` for substring match (applies to `splitword` and `exact`) |
-| `caseSensitive` | `false` | If `true`, comparison is case-sensitive. Applies to all modes including `nativeregex` (switches `~*` → `~`) |
+| `contained` | `false` | If `true`, matches as a substring (`contains`) instead of an exact match (applies to `splitword` and `exact`) |
+| `caseSensitive` | `false` | If `true`, comparison is case-sensitive (drops Prisma's `mode: "insensitive"`) |
 
 ### Number fields
 
@@ -90,7 +90,7 @@ A field declared as `{ type: "enum", values: [...] }` in the schema accepts only
 { "searchBy": { "role": "admin" } }
 ```
 
-Sending `{ "role": "invalid" }` errors with `Field 'role' must be one of: admin, moderator, user`. No object form — enums are exact equality only. With `schemaFromTypeORM`, columns declared as `@Column({ type: "enum", enum: SomeEnum })` are auto-detected and their allowed values extracted.
+Sending `{ "role": "invalid" }` errors with `Field 'role' must be one of: admin, moderator, user`. No object form — enums are exact equality only. With `schemaFromPrisma`, fields whose Prisma type is an `enum` are auto-detected and their allowed values extracted from the DMMF.
 
 ### Date fields
 
@@ -134,7 +134,7 @@ Date range (`before` and/or `after`, both optional):
 
 Two presence-check forms are available as alternative values to a normal comparison:
 
-**`isNull`** — any primitive field (string, number, boolean, date, enum) **that is declared nullable in the schema** (`{ type: ..., nullable: true }`). With `schemaFromTypeORM`, this is auto-populated from the column's `isNullable` metadata. Sending `isNull` on a non-nullable field is rejected at parse time.
+**`isNull`** — any primitive field (string, number, boolean, date, enum) **that is declared nullable in the schema** (`{ type: ..., nullable: true }`). With `schemaFromPrisma`, this is auto-populated from each field's optionality in the DMMF. Sending `isNull` on a non-nullable field is rejected at parse time.
 
 ```json
 { "searchBy": { "deletedAt": { "isNull": true } } }
@@ -197,9 +197,9 @@ Use explicit cardinality operators (`some` / `every` / `none`) for finer control
 
 | Operator | SQL | Meaning |
 |----------|-----|---------|
-| `some` (or short form) | `EXISTS` via leftJoin | At least one related row matches |
-| `every` | `NOT EXISTS (... AND NOT (condition))` | All related rows match (vacuously true if no rows) |
-| `none` | `NOT EXISTS (... AND condition)` | No related row matches |
+| `some` (or short form) | Prisma `some` relation filter | At least one related row matches |
+| `every` | Prisma `every` relation filter | All related rows match (vacuously true if no rows) |
+| `none` | Prisma `none` relation filter | No related row matches |
 
 The relation must be declared in the schema. The nested object follows the same rules as a top-level `searchBy` — including further nested `some` for the implicit-some path.
 
@@ -316,7 +316,7 @@ Relations referenced in `searchBy` are automatically joined (for filtering); `in
 
 `page` defaults to `0`, `perPage` defaults to `20`.
 
-`"first"` is equivalent to `{ page: 0, perPage: 1 }`. It sets `skip(0).take(1)` on the builder.
+`"first"` is equivalent to `{ page: 0, perPage: 1 }`. With the Prisma adapter it maps to `findFirst` with `take: 1`.
 
 ### Output-shape flags
 
@@ -325,13 +325,13 @@ Relations referenced in `searchBy` are automatically joined (for filtering); `in
 | Flag | Default | Effect on `engine.run` |
 |------|---------|-------------------------|
 | `showNumber` | `true` | Include `current` (rows in this page) |
-| `showTotal`  | `true` | Include `total` (rows matching the query without pagination); uses `getManyAndCount` under the hood |
+| `showTotal`  | `true` | Include `total` (rows matching the query without pagination); runs a parallel `count` under the hood |
 
 ```json
 { "pagination": { "page": 0, "perPage": 20, "showTotal": false } }
 ```
 
-Disabling `showTotal` skips the extra `SELECT COUNT(*)` round-trip. Both flags appear on every parsed pagination kind (`"all"`, `"first"`, `"page"`) so the executed result shape is uniform regardless of mode.
+Disabling `showTotal` skips the extra `count` round-trip. Both flags appear on every parsed pagination kind (`"all"`, `"first"`, `"page"`) so the executed result shape is uniform regardless of mode.
 
 ### Result shape
 
@@ -344,5 +344,5 @@ interface PaginatedResult<T> {
 ```
 
 ```typescript
-const { data, current, total } = await engine.run(input, qb);
+const { data, current, total } = await engine.run(input, "User", prisma.user);
 ```

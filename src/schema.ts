@@ -15,14 +15,13 @@ export type FieldType =
 interface BaseFieldDefinition {
   /**
    * Override the database column name. Defaults to the field key.
-   * Adapters may ignore this if they rely on ORM metadata (TypeORM uses the
-   * entity's own column mapping).
+   * Adapters may ignore this if they derive column names from ORM metadata.
    */
   column?: string;
   /**
    * Whether the column accepts NULL. Defaults to `false`. The parser uses this
    * to reject `{ isNull }` presence checks on non-nullable fields. With
-   * `schemaFromTypeORM`, this is auto-populated from `ColumnMetadata.isNullable`.
+   * `schemaFromPrisma`, this is auto-populated from the DMMF field metadata.
    */
   nullable?: boolean;
   /**

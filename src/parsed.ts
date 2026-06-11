@@ -111,7 +111,7 @@ export type ParsedPagination =
     };
 
 /**
- * Shape returned by `engine.run` on executable adapters (e.g. TypeORM).
+ * Shape returned by `engine.run` on executable adapters (e.g. the Prisma adapter).
  * `current` / `total` are populated according to `pagination.showNumber` /
  * `pagination.showTotal` on the parsed query (both default to `true`).
  */

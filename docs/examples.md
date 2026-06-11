@@ -57,7 +57,7 @@ Find users whose first name contains "mario" or "luigi" (case-insensitive):
 }
 ```
 
-`splitword` splits on whitespace and OR-s the words with ILIKE. Matches "Mario", "Luigi", "mario", etc.
+`splitword` splits on whitespace and OR-s the words with a case-insensitive `contains`. Matches "Mario", "Luigi", "mario", etc.
 
 ---
 
@@ -97,13 +97,13 @@ Find users whose email contains "@example.com":
 }
 ```
 
-Translates to `LIKE '%@example.com%'`.
+Translates to `{ contains: "@example.com" }`.
 
 ---
 
-## Regex search (PostgreSQL only)
+## Regex search (`nativeregex`)
 
-Find users whose last name starts with "Ross":
+The parser accepts a `nativeregex` mode for a hypothetical future SQL adapter:
 
 ```json
 {
@@ -116,7 +116,7 @@ Find users whose last name starts with "Ross":
 }
 ```
 
-Translates to `lastName ~ '^Ross'`.
+The **Prisma adapter rejects** this at apply time — Prisma has no portable regex operator inside a `where` clause (PostgreSQL exposes it only through `$queryRaw`). For "starts with" matching, use `exact` with `contained: false` against a prefix, or `splitword` / `exact` with `contained: true` for substring matching.
 
 ---
 
@@ -443,13 +443,13 @@ Skip the count query when you only need the page rows (no total in the UI):
 `engine.run` returns `{ data, current?, total? }` directly:
 
 ```typescript
-const qb = userRepository.createQueryBuilder("User");
 const { data, current, total } = await engine.run(
   { pagination: { page: 2, perPage: 25 } },
-  qb,
+  "User",
+  prisma.user,
 );
 // current === data.length
-// total   === rows matched ignoring page/perPage (via getManyAndCount)
+// total   === rows matched ignoring page/perPage (via a parallel count)
 ```
 
 ---

@@ -12,7 +12,7 @@ export interface GenQueryEngineOptions<TTarget, TResult> {
 
 type IsAny<T> = 0 extends 1 & T ? true : false;
 
-/** True for TypeORM's wide ObjectLiteral default — treat as "unspecified". */
+/** True for a wide `Record<string, any>` default — treat as "unspecified". */
 type IsLooseRecord<T> = IsAny<T> extends true
   ? true
   : [T] extends [Record<string, any>]
@@ -23,32 +23,23 @@ type IsLooseRecord<T> = IsAny<T> extends true
 
 /**
  * Inspect the target's structural shape and pull out the entity type:
- *  - TypeORM `SelectQueryBuilder<T>` exposes `getMany(): Promise<T[]>`.
- *  - Prisma model delegate exposes `findMany(args?): Promise<T[]>`.
+ *  - A Prisma model delegate exposes `findMany(args?): Promise<T[]>`.
  * Falls back to `unknown` (loose mode) for any other adapter target.
  */
 type InferEntityFromTarget<X> = X extends {
-  getMany(): Promise<infer A>;
+  findMany(args?: any): Promise<infer A>;
 }
   ? A extends (infer T)[]
     ? IsLooseRecord<T> extends true
       ? unknown
       : T
     : unknown
-  : X extends {
-        findMany(args?: any): Promise<infer A>;
-      }
-    ? A extends (infer T)[]
-      ? IsLooseRecord<T> extends true
-        ? unknown
-        : T
-      : unknown
-    : unknown;
+  : unknown;
 
 /**
  * Combines parsing + an adapter into a single entry point. The engine is
  * generic over the adapter so the signature of `run` matches the chosen
- * backend (e.g. `SelectQueryBuilder<T>` in/out for TypeORM).
+ * backend (e.g. a Prisma model delegate in, `PaginatedResult<T>` out).
  *
  * The schema is read from the adapter — there is one source of truth.
  */
@@ -76,13 +67,14 @@ export class GenQueryEngine<TTarget, TResult> {
    * `{ data, current?, total? }` shaped by `pagination.showNumber` /
    * `pagination.showTotal` (both default to `true`).
    *
-   * Requires the adapter to implement `execute` (the TypeORM adapter does).
-   * Pure args-builder adapters (Prisma, etc.) should use `parse` +
-   * `runParsed` instead — `runParsed` is sync and returns the adapter's raw
-   * `TResult` (the args object or query builder) without executing.
+   * Requires the adapter to implement `execute` (the Prisma adapter does —
+   * it issues `findMany` plus an optional parallel `count`). Args-only
+   * adapters that leave `execute` unset should use `parse` + `runParsed`
+   * instead — `runParsed` is sync and returns the adapter's raw `TResult`
+   * (the args object) without executing.
    *
    * The entity type is inferred from the `target` argument when it has a
-   * recognizable shape (e.g. a TypeORM `SelectQueryBuilder<User>`). When the
+   * recognizable shape (e.g. a Prisma `User` model delegate). When the
    * adapter implements `getRootEntity`, the `rootEntity` string is optional —
    * the engine asks the adapter to derive it from the target. Pass an explicit
    * `rootEntity` to override (or when the adapter can't introspect).

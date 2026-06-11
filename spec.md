@@ -231,8 +231,8 @@ A string is searched against a specified regex. The regex is in the language nat
 		//
 		//   showNumber: bool | @true,  // include `current` (rows in this page)
 		//   showTotal:  bool | @true,  // include `total`   (rows matching the
-		//                              //   query without pagination — uses
-		//                              //   getManyAndCount on TypeORM)
+		//                              //   query without pagination — the Prisma
+		//                              //   adapter runs a parallel `count`)
 		showNumber: false | @true,
 		showTotal:  false | @true,
 	}
