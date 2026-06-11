@@ -329,6 +329,31 @@ test("include 'all' on plain select=all → use `include`", () => {
   assert.equal(args.select, undefined);
 });
 
+test("include Prisma-style: true ≡ 'all' (top-level e per-relazione)", () => {
+  const engine = makeEngine();
+  // include: true ≡ include: 'all'
+  const all = engine.runParsed(engine.parse({ include: true } as any, "User"), null as never) as any;
+  assert.deepEqual(all.include, { posts: true, profile: true });
+  // valore boolean sulla singola relazione (shape che inviano FE e federazione)
+  const rel = engine.runParsed(
+    engine.parse({ include: { posts: true } } as any, "User"),
+    null as never,
+  ) as any;
+  assert.deepEqual(rel.include, { posts: true });
+});
+
+test("include Prisma-style: false/null ≡ omesso (niente errore)", () => {
+  const engine = makeEngine();
+  const args = engine.runParsed(
+    engine.parse({ include: { posts: false, profile: null } } as any, "User"),
+    null as never,
+  ) as any;
+  assert.equal(args.include, undefined);
+  // include: false ≡ 'none'
+  const none = engine.runParsed(engine.parse({ include: false } as any, "User"), null as never) as any;
+  assert.equal(none.include, undefined);
+});
+
 test("include is nested under select when select≠all", () => {
   const engine = makeEngine();
   const parsed = engine.parse(

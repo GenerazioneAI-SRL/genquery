@@ -182,6 +182,27 @@ export type AlwaysIncludeItem =
  * `alwaysInclude` = chiavi federate da risolvere anche se il client non le chiede
  * (retro-compat con i gateway che arricchivano sempre); supporta shape annidata.
  */
+/**
+ * Normalizza il PRIMO livello di una shape include alla grammatica canonica del
+ * parser (true → 'all', false/null → omesso). SOLO il primo livello: nei livelli
+ * interni `true` è grammatica legale (selezione campo / relazione annidata) e va
+ * preservato. Serve a far digerire gli envelope federati anche ai backend con
+ * parser pre-0.12.1 (che rifiutavano i boolean al top-level).
+ */
+function normalizeIncludeFirstLevel(
+  inc: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (inc == null || typeof inc !== "object" || Array.isArray(inc)) {
+    return inc ?? undefined;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(inc)) {
+    if (v === false || v == null) continue;
+    out[k] = v === true ? "all" : v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 export function planFederatedIncludes(opts: {
   index: FederationIndex;
   /** Service that owns the cmd being sent (the "local" side). */
@@ -265,6 +286,13 @@ export function planFederatedIncludes(opts: {
                   select: src.select as Record<string, unknown> | undefined,
                 }
               : undefined;
+        }
+        // L'envelope verso l'owner deve essere in grammatica canonica: i client
+        // (e gli alwaysInclude) scrivono Prisma-style `{individual: true}` che i
+        // parser pre-0.12.1 rifiutano al top-level → normalizza il primo livello.
+        if (nested) {
+          const include = normalizeIncludeFirstLevel(nested.include);
+          nested = include || nested.select ? { include, select: nested.select } : undefined;
         }
         remote.push({ key, fk, targetService, targetModel, nested });
         return;

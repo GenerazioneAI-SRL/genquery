@@ -90,8 +90,30 @@ test("include annidato dentro la chiave federata viene inoltrato al target", () 
     model: "StructureJuridicalIndividual",
     include: { juridicalIndividual: { include: { individual: true } } },
   });
+  // Il primo livello del nested è NORMALIZZATO (true → 'all'): l'envelope verso
+  // l'owner deve essere in grammatica canonica anche per parser pre-0.12.1.
   assert.deepEqual(plan.remote[0].nested, {
-    include: { individual: true },
+    include: { individual: "all" },
+    select: undefined,
+  });
+});
+
+test("normalizzazione nested: solo il PRIMO livello (true interni preservati), false omessi", () => {
+  const plan = planFederatedIncludes({
+    index,
+    service: "skillHr",
+    model: "StructureJuridicalIndividual",
+    include: {
+      juridicalIndividual: {
+        include: {
+          individual: { firstName: true, lastName: true }, // selezione campi: true legale, NON va riscritto
+          dropped: false, // disattivato → omesso dall'envelope
+        },
+      },
+    },
+  });
+  assert.deepEqual(plan.remote[0].nested, {
+    include: { individual: { firstName: true, lastName: true } },
     select: undefined,
   });
 });
@@ -297,7 +319,8 @@ test("alwaysInclude annidato inoltra include al target (ripristina nested indivi
     alwaysInclude: [{ key: "juridicalIndividual", include: { individual: true } }],
   });
   assert.equal(plan.remote.length, 1);
-  assert.deepEqual(plan.remote[0].nested, { include: { individual: true }, select: undefined });
+  // alwaysInclude Prisma-style {individual: true} → normalizzato a 'all' nell'envelope.
+  assert.deepEqual(plan.remote[0].nested, { include: { individual: "all" }, select: undefined });
 });
 
 test("include:false NON viene resuscitato da alwaysInclude", () => {

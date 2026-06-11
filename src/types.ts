@@ -221,17 +221,21 @@ export type OrderByInput<T = unknown> = IsLoose<T> extends true
 
 export type IncludeFieldSpec = boolean;
 
+// Tolleranza Prisma-style (0.12.1): boolean ammessi ovunque — true ≡ 'all',
+// false ≡ omesso ('none' al top-level). Grammatica canonica: 'all'/'none'/oggetto.
 export type IncludeRelationSpec<U = unknown> = IsLoose<U> extends true
-  ? "all" | { [fieldOrRelation: string]: IncludeFieldSpec | IncludeRelationSpec }
+  ? "all" | boolean | { [fieldOrRelation: string]: IncludeFieldSpec | IncludeRelationSpec }
   :
       | "all"
+      | boolean
       | { [K in FieldKeysOf<U>]?: IncludeFieldSpec };
 
 export type IncludeInput<T = unknown> = IsLoose<T> extends true
-  ? "none" | "all" | { [relation: string]: IncludeRelationSpec }
+  ? "none" | "all" | boolean | { [relation: string]: IncludeRelationSpec }
   :
       | "none"
       | "all"
+      | boolean
       | { [K in RelationKeysOf<T>]?: IncludeRelationSpec<RelationTargetOf<T, K>> };
 
 // ----------------------------------------------------------------------------

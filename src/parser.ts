@@ -602,8 +602,11 @@ function parseInclude(
   schema: Schema,
   path: string,
 ): ParsedInclude {
-  if (raw === "none") return { kind: "none" };
-  if (raw === "all") return { kind: "all" };
+  // Tolleranza Prisma-style: true ≡ 'all', false ≡ 'none' (i client FE e la
+  // federazione inviano naturalmente boolean; la grammatica canonica resta
+  // 'all'/'none'/oggetto). Simmetrico ai livelli annidati (parseRelationSpec).
+  if (raw === "none" || raw === false) return { kind: "none" };
+  if (raw === "all" || raw === true) return { kind: "all" };
   if (!isPlainObject(raw)) {
     throw new QueryValidationError(
       "include must be 'all', 'none', or an object",
@@ -613,6 +616,8 @@ function parseInclude(
 
   const relations: Record<string, ParsedIncludeRelation> = {};
   for (const [relName, spec] of Object.entries(raw)) {
+    // Prisma-style: relazione disattivata esplicitamente → come se omessa.
+    if (spec === false || spec == null) continue;
     const relDef = entity.relations?.[relName];
     if (!relDef) {
       throw new QueryValidationError(
@@ -648,13 +653,17 @@ function parseRelationSpec(
   schema: Schema,
   path: string,
 ): ParsedIncludeRelation {
-  if (spec === "all") return { kind: "all" };
+  // true ≡ 'all' anche qui: copre i call-path diretti (top-level di parseInclude
+  // normalizza già, ma envelope federati/legacy possono arrivare con boolean).
+  if (spec === "all" || spec === true) return { kind: "all" };
   if (!isPlainObject(spec)) {
     throw new QueryValidationError(`${path} must be 'all' or an object`, path);
   }
   const fields: string[] = [];
   const relations: Record<string, ParsedIncludeRelation> = {};
   for (const [k, v] of Object.entries(spec)) {
+    // Prisma-style: false/null su campo o relazione → escluso (come omesso).
+    if (v === false || v == null) continue;
     const fieldDef = entity.fields[k];
     const relDef = entity.relations?.[k];
     if (fieldDef) {
