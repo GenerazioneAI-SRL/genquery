@@ -3,6 +3,12 @@ export * from "./parsed";
 export * from "./schema";
 export * from "./errors";
 export { parseQuery } from "./parser";
+export {
+  buildGenQueryPolicy,
+  DEFAULT_SECRET_FIELDS,
+  type BuildGenQueryPolicyOptions,
+  type PolicyManifestLike,
+} from "./entity-policy-builder";
 export { GenQueryEngine, type GenQueryEngineOptions } from "./engine";
 export type { Adapter } from "./adapters/base";
 export { parseDateTime } from "./datetime";
