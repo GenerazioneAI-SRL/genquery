@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "ORM-agnostic JSON query language with a pluggable Prisma adapter",
   "license": "BSD-3-Clause",
   "repository": {
@@ -46,7 +46,7 @@
     "spec.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && tsc",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test 'dist/tests/*.test.js'",
     "prepublishOnly": "npm run build"
