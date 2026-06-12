@@ -53,8 +53,12 @@ export type ParsedFieldCondition =
   | { kind: "date"; field: string; search: ParsedDateSearch }
   | { kind: "enum"; field: string; search: ParsedEnumSearch }
   | { kind: "id"; field: string; search: ParsedIdSearch }
-  /** Membership: wire form `field: [v1, v2, ...]` → SQL IN. string/id/enum/number only. */
-  | { kind: "in"; field: string; values: (string | number)[] }
+  /**
+   * Membership: wire form `field: [v1, v2, ...]` or object form
+   * `field: { in: [...] }` → SQL IN; `field: { notIn: [...] }` → SQL NOT IN
+   * (`negate: true`). string/id/enum/number only.
+   */
+  | { kind: "in"; field: string; values: (string | number)[]; negate?: boolean }
   | { kind: "null"; field: string; check: ParsedNullCheck }
   | { kind: "empty"; field: string; check: ParsedEmptyCheck }
   | {

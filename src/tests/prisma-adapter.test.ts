@@ -525,3 +525,58 @@ test("empty array and date/bool arrays are rejected", () => {
     QueryValidationError,
   );
 });
+
+// ── IN / NOT IN object form: `{ in: [...] }` / `{ notIn: [...] }` ───────────
+
+test("object form { in } on string field → IN", () => {
+  const engine = makeEngine();
+  const parsed = engine.parse(
+    { searchBy: { email: { in: ["a@x.it", "b@x.it"] } } },
+    "User",
+  );
+  const args = engine.runParsed(parsed, null as never);
+  assert.deepEqual(args, { where: { email: { in: ["a@x.it", "b@x.it"] } } });
+});
+
+test("object form { notIn } on string field → NOT IN", () => {
+  const engine = makeEngine();
+  const parsed = engine.parse(
+    { searchBy: { email: { notIn: ["a@x.it", "b@x.it"] } } },
+    "User",
+  );
+  const args = engine.runParsed(parsed, null as never);
+  assert.deepEqual(args, { where: { email: { notIn: ["a@x.it", "b@x.it"] } } });
+});
+
+test("object form { notIn } on number field → NOT IN", () => {
+  const engine = makeEngine();
+  const parsed = engine.parse({ searchBy: { age: { notIn: [18, 21] } } }, "User");
+  const args = engine.runParsed(parsed, null as never);
+  assert.deepEqual(args, { where: { age: { notIn: [18, 21] } } });
+});
+
+test("object form allows empty list (in → none, notIn → all)", () => {
+  const engine = makeEngine();
+  const inArgs = engine.runParsed(
+    engine.parse({ searchBy: { email: { in: [] } } }, "User"),
+    null as never,
+  );
+  assert.deepEqual(inArgs, { where: { email: { in: [] } } });
+  const notInArgs = engine.runParsed(
+    engine.parse({ searchBy: { email: { notIn: [] } } }, "User"),
+    null as never,
+  );
+  assert.deepEqual(notInArgs, { where: { email: { notIn: [] } } });
+});
+
+test("object form rejects combining in and notIn, and non-array values", () => {
+  const engine = makeEngine();
+  assert.throws(
+    () => engine.parse({ searchBy: { email: { in: ["a"], notIn: ["b"] } } }, "User"),
+    QueryValidationError,
+  );
+  assert.throws(
+    () => engine.parse({ searchBy: { email: { in: "a@x.it" } } }, "User"),
+    QueryValidationError,
+  );
+});

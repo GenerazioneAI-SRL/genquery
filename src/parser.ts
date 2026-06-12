@@ -397,6 +397,11 @@ function parseLeafConditions(
     if (parsed.empty) out.push({ kind: "empty", field, check: parsed.empty });
     return out;
   }
+  // Membership object form: `field: { in: [...] }` / `field: { notIn: [...] }`.
+  // Detected before per-type parsing so it works across all field types.
+  if (isInObject(value)) {
+    return [parseInObject(field, def, value, path)];
+  }
   // Membership: `field: [v1, v2, ...]` → IN. string/id/enum/number only.
   if (Array.isArray(value)) {
     return [parseInCondition(field, def, value, path)];
@@ -404,19 +409,57 @@ function parseLeafConditions(
   return [parseLeafConditionTyped(field, def, value, path)];
 }
 
+/** Detects the `{ in: [...] }` / `{ notIn: [...] }` membership object form. */
+function isInObject(
+  value: unknown,
+): value is { in?: unknown[]; notIn?: unknown[] } {
+  return (
+    isPlainObject(value) &&
+    (Object.prototype.hasOwnProperty.call(value, "in") ||
+      Object.prototype.hasOwnProperty.call(value, "notIn"))
+  );
+}
+
+function parseInObject(
+  field: string,
+  def: FieldDefinition,
+  value: { in?: unknown[]; notIn?: unknown[] },
+  path: string,
+): ParsedFieldCondition {
+  const hasIn = Object.prototype.hasOwnProperty.call(value, "in");
+  const hasNotIn = Object.prototype.hasOwnProperty.call(value, "notIn");
+  if (hasIn && hasNotIn) {
+    throw new QueryValidationError(
+      "Cannot combine 'in' and 'notIn' on the same field",
+      path,
+    );
+  }
+  const negate = hasNotIn;
+  const key = negate ? "notIn" : "in";
+  const arr = value[key];
+  if (!Array.isArray(arr)) {
+    throw new QueryValidationError(`'${key}' must be an array`, `${path}.${key}`);
+  }
+  // Empty list is allowed in the explicit object form: `{ in: [] }` matches
+  // nothing, `{ notIn: [] }` excludes nothing — both well-defined in Prisma.
+  const cond = parseInCondition(field, def, arr, `${path}.${key}`, true);
+  return { ...cond, negate };
+}
+
 function parseInCondition(
   field: string,
   def: FieldDefinition,
   value: unknown[],
   path: string,
-): ParsedFieldCondition {
+  allowEmpty = false,
+): Extract<ParsedFieldCondition, { kind: "in" }> {
   if (def.type === "boolean" || def.type === "date") {
     throw new QueryValidationError(
       `Array (IN) search is not supported on ${def.type} fields`,
       path,
     );
   }
-  if (value.length === 0) {
+  if (value.length === 0 && !allowEmpty) {
     throw new QueryValidationError(
       "IN list must contain at least one value",
       path,
