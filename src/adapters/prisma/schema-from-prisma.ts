@@ -6,6 +6,7 @@ import {
   type FieldType,
   type RelationDefinition,
   type Schema,
+  type UnmappedColumnDefinition,
 } from "../../schema";
 import type {
   PrismaDatamodel,
@@ -105,6 +106,10 @@ function buildEntity(
 ): EntityDefinition {
   const fields: Record<string, FieldDefinition> = {};
   const relations: Record<string, RelationDefinition> = {};
+  // Columns the mapper skips (Json/Bytes/scalar lists/unknown) still exist on
+  // the Prisma client output — track them so `applyPolicy` can flag the
+  // policy-denied ones and the adapter can strip them from default selections.
+  const unmappedColumns: Record<string, UnmappedColumnDefinition> = {};
   const overrides = options.overrides?.[model.name] ?? {};
   const keyFields = collectKeyFieldNames(model);
 
@@ -129,7 +134,10 @@ function buildEntity(
 
     if (f.kind === "enum") {
       const values = enumValues.get(f.type);
-      if (!values) continue;
+      if (!values) {
+        unmappedColumns[f.name] = {};
+        continue;
+      }
       fields[f.name] = {
         type: "enum",
         values: values.slice(),
@@ -147,7 +155,10 @@ function buildEntity(
 
     // scalar
     const fieldType = mapScalar(f, model.name, options);
-    if (!fieldType) continue;
+    if (!fieldType) {
+      unmappedColumns[f.name] = {};
+      continue;
+    }
     fields[f.name] = {
       type: fieldType,
       nullable: !f.isRequired,
@@ -163,6 +174,8 @@ function buildEntity(
     name: model.name,
     fields,
   };
+  if (Object.keys(unmappedColumns).length > 0)
+    definition.unmappedColumns = unmappedColumns;
   if (Object.keys(relations).length > 0) definition.relations = relations;
   const pk = derivePrimaryKey(model);
   if (pk) definition.primaryKey = pk;

@@ -218,6 +218,10 @@ A string is searched against a specified regex. The regex is in the language nat
 	},
 
 	select: "none" | @"all" |  { // which fields to include in the query result
+		// "all" means all the fields the policy allows: as of 0.14.0,
+		// policy-denied fields (selectable: false — e.g. DEFAULT_SECRET_FIELDS)
+		// are stripped from the default selection, at the root and inside
+		// included relations. Asking for a denied field explicitly is rejected.
 		someField: true, // only field 'someField' will be included in the query this way
 	},
 

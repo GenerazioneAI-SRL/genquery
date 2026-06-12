@@ -606,7 +606,21 @@ function parseInclude(
   // federazione inviano naturalmente boolean; la grammatica canonica resta
   // 'all'/'none'/oggetto). Simmetrico ai livelli annidati (parseRelationSpec).
   if (raw === "none" || raw === false) return { kind: "none" };
-  if (raw === "all" || raw === true) return { kind: "all" };
+  if (raw === "all" || raw === true) {
+    // POLICY: 'all' espande solo le relazioni includibili. Una relazione con
+    // includable:false viene rifiutata se nominata esplicitamente — non puo'
+    // quindi rientrare dall'espansione implicita di 'all'. Senza relazioni
+    // negate il percorso storico ({kind:'all'}) resta invariato.
+    const rels = entity.relations ?? {};
+    const hasDenied = Object.values(rels).some((r) => r.includable === false);
+    if (!hasDenied) return { kind: "all" };
+    const relations: Record<string, ParsedIncludeRelation> = {};
+    for (const [relName, relDef] of Object.entries(rels)) {
+      if (relDef.includable === false) continue;
+      relations[relName] = { kind: "all" };
+    }
+    return { kind: "map", relations };
+  }
   if (!isPlainObject(raw)) {
     throw new QueryValidationError(
       "include must be 'all', 'none', or an object",

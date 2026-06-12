@@ -32,7 +32,7 @@ The `Schema` (`src/schema.ts`) is required by both parser and adapter — it's w
 
 `src/adapters/prisma/adapter.ts` — `PrismaAdapter` (`name = "prisma"`) implements `Adapter<PrismaModelDelegate, PrismaFindManyArgs>`:
 
-- **`apply` / `buildArgs`** build a Prisma args object from a parsed query without touching the database. `build()` runs in a fixed order: WHERE (`buildWhere`), ORDER BY (`{ [field]: order }`), pagination, then SELECT/INCLUDE (`applySelectAndInclude`), and finally merges `query.baseArgs` — server-side raw native Prisma filters the DSL doesn't model. `baseArgs.where` is **AND-merged** with the parsed where; `orderBy` / `include` / `select` are only used when the parsed query didn't set them.
+- **`apply` / `buildArgs`** build a Prisma args object from a parsed query without touching the database. `build()` runs in a fixed order: WHERE (`buildWhere`), ORDER BY (`{ [field]: order }`), pagination, then SELECT/INCLUDE (`applySelectAndInclude`), and finally merges `query.baseArgs` — server-side raw native Prisma filters the DSL doesn't model. `baseArgs.where` is **AND-merged** with the parsed where; `orderBy` / `include` / `select` are only used when the parsed query didn't set them. The secret-strip `omit` never occupies `select` / `include`, so baseArgs precedence is identical to pre-0.14; a merged `baseArgs.select` (trusted, server-side) drops the `omit` (Prisma forbids `select`+`omit` at the same level).
 - **`execute`** runs `findMany` (or `findFirst` for `pagination.kind === "first"`) and, when `pagination.showTotal`, a `count`. The count runs in parallel by default (`PrismaAdapterOptions.parallelCount`, set `false` to serialize when the client pools poorly).
 - **`getRootEntity` is not implemented** — Prisma delegates don't expose their model name on a stable public API, so the `rootEntity` string must always be passed to `engine.run(input, rootEntity, delegate)`.
 
@@ -43,9 +43,9 @@ The `Schema` (`src/schema.ts`) is required by both parser and adapter — it's w
 
 A string `{ isNull }` presence check expands to `{ OR: [{ field: null }, { field: "" }] }`.
 
-`src/adapters/prisma/select.ts` — `applySelectAndInclude` sets `args.select` / `args.include`. Selected fields **always include the primary key** (`primaryKeyOf`) so hydration and relation joins work even when the caller asked for a narrow field set.
+`src/adapters/prisma/select.ts` — `applySelectAndInclude` sets `args.select` / `args.include` / `args.omit`. Selected fields **always include the primary key** (`primaryKeyOf`) so hydration and relation joins work even when the caller asked for a narrow field set. As of 0.14.0, `select: "all"` on an entity with policy-denied fields (`selectable: false` — DEFAULT_SECRET_FIELDS / deny / allowlist) gets a Prisma `omit` of the denied names (`deniedOmit`) instead of relying on Prisma's default selection — every other column, including ones the schema doesn't model (Json / scalar arrays, tracked as `unmappedColumns`), is left untouched; relations included without an explicit field list get the same per-target stripping. Entities with no denied fields keep the historical behavior (no `omit` key emitted).
 
-`src/adapters/prisma/schema-from-prisma.ts` — `schemaFromPrisma(datamodel, options)` derives a `Schema` from a Prisma DMMF datamodel: indexes enums, builds an entity per model, maps scalar types, and derives each model's primary key (`derivePrimaryKey`).
+`src/adapters/prisma/schema-from-prisma.ts` — `schemaFromPrisma(datamodel, options)` derives a `Schema` from a Prisma DMMF datamodel: indexes enums, builds an entity per model, maps scalar types (skipped columns — Json/Bytes/scalar lists/unknown — are recorded as `unmappedColumns` so `applyPolicy` can still deny them for selection), and derives each model's primary key (`derivePrimaryKey`).
 
 `src/adapters/prisma/create.ts` — `createPrismaEngine(datamodel, options)` is the one-line setup: read the schema from the DMMF, build the adapter, build the engine.
 

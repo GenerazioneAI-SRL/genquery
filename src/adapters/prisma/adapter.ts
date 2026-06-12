@@ -121,6 +121,9 @@ export class PrismaAdapter
       if (base.orderBy !== undefined && args.orderBy === undefined) {
         args.orderBy = base.orderBy as PrismaFindManyArgs["orderBy"];
       }
+      // The secret-strip `omit` never occupies `select` / `include`, so
+      // baseArgs keep their pre-strip precedence untouched. `omit` composes
+      // with a merged base.include as-is.
       if (
         base.include !== undefined &&
         args.include === undefined &&
@@ -133,7 +136,10 @@ export class PrismaAdapter
         args.select === undefined &&
         args.include === undefined
       ) {
+        // Trusted server-side explicit select: supersedes the secret-strip
+        // `omit` (Prisma forbids `select` and `omit` at the same level).
         args.select = base.select as PrismaFindManyArgs["select"];
+        delete args.omit;
       }
     }
     return args;

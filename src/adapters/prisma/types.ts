@@ -32,15 +32,28 @@ export interface PrismaFindManyArgs {
   take?: number;
   select?: PrismaSelect;
   include?: PrismaInclude;
+  omit?: PrismaOmit;
 }
 
 export interface PrismaSelect {
-  [field: string]: boolean | { select?: PrismaSelect; include?: PrismaInclude };
+  [field: string]:
+    | boolean
+    | { select?: PrismaSelect; include?: PrismaInclude; omit?: PrismaOmit };
 }
 
 export interface PrismaInclude {
-  [relation: string]: boolean | { select?: PrismaSelect; include?: PrismaInclude };
+  [relation: string]:
+    | boolean
+    | { select?: PrismaSelect; include?: PrismaInclude; omit?: PrismaOmit };
 }
+
+/**
+ * Prisma `omit` — fields excluded from the default selection (GA since Prisma
+ * 6.2). Mutually exclusive with `select` at the same level; composes with
+ * `include`. Used by the secret-strip so policy-denied fields never leave the
+ * database layer while every other column keeps Prisma's default selection.
+ */
+export type PrismaOmit = Record<string, boolean>;
 
 // ----------------------------------------------------------------------------
 // Datamodel shapes — structural subset of `Prisma.dmmf.datamodel`.

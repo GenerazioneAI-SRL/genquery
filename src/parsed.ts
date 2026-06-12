@@ -121,7 +121,8 @@ export interface PaginatedResult<T> {
   current?: number;
   /**
    * Rows matching the query without pagination. Present when
-   * `pagination.showTotal` is true. Sourced from `getManyAndCount`.
+   * `pagination.showTotal` is true. Sourced from the Prisma adapter's
+   * parallel `count` query.
    */
   total?: number;
 }

@@ -49,6 +49,24 @@ export interface EnumFieldDefinition extends BaseFieldDefinition {
   values: readonly string[];
 }
 
+/**
+ * A column that exists on the underlying model but is NOT modeled as a
+ * genquery field (e.g. Prisma `Json` / `Bytes` / scalar arrays, which
+ * `schemaFromPrisma` skips). Invisible to the wire DSL — it cannot be
+ * filtered, sorted or selected explicitly — but `applyPolicy` still projects
+ * the `selectable` allowlist onto it, so adapters can strip policy-denied
+ * columns from default (`select: "all"`) results without touching the
+ * allowed ones.
+ */
+export interface UnmappedColumnDefinition {
+  /**
+   * POLICY. Whether the column may appear in default-selection results.
+   * Defaults to `true`. Set `false` (usually via `applyPolicy`) to have the
+   * adapter strip it.
+   */
+  selectable?: boolean;
+}
+
 export interface RelationDefinition {
   /** Name of the related entity in the schema's `entities` map. */
   target: string;
@@ -65,6 +83,12 @@ export interface EntityDefinition {
   name: string;
   fields: Record<string, FieldDefinition>;
   relations?: Record<string, RelationDefinition>;
+  /**
+   * Columns present on the underlying model but not modeled as fields (see
+   * {@link UnmappedColumnDefinition}). Populated by `schemaFromPrisma` for the
+   * scalars it skips (`Json`, `Bytes`, scalar lists, unknown types).
+   */
+  unmappedColumns?: Record<string, UnmappedColumnDefinition>;
   /**
    * Primary key field name. Used to give relations a stable identity in
    * adapter output. Defaults to "id".
@@ -187,6 +211,20 @@ function applyEntityPolicy(
     fields[fname] = next;
   }
 
+  // Unmapped columns can't be queried, but the `selectable` allowlist still
+  // applies to them — adapters use the flag to strip denied columns from
+  // default selections.
+  let unmappedColumns: Record<string, UnmappedColumnDefinition> | undefined;
+  if (entity.unmappedColumns) {
+    unmappedColumns = {};
+    for (const [cname, cdef] of Object.entries(entity.unmappedColumns)) {
+      const next: UnmappedColumnDefinition = { ...cdef };
+      const sel = allow(policy.selectable, cname);
+      if (sel !== undefined) next.selectable = sel;
+      unmappedColumns[cname] = next;
+    }
+  }
+
   let relations: Record<string, RelationDefinition> | undefined;
   if (entity.relations) {
     relations = {};
@@ -201,6 +239,7 @@ function applyEntityPolicy(
   }
 
   const out: EntityDefinition = { ...entity, fields };
+  if (unmappedColumns) out.unmappedColumns = unmappedColumns;
   if (relations) out.relations = relations;
   if (policy.maxPerPage !== undefined) out.maxPerPage = policy.maxPerPage;
   return out;

@@ -143,7 +143,7 @@ Top-level keys:
 |-----|---------|---------|
 | `searchBy` | — | Filter conditions (AND + OR) |
 | `orderBy` | — | Sort field and direction |
-| `select` | `"all"` | Which fields to return |
+| `select` | `"all"` | Which fields to return (policy-denied fields are stripped from `"all"`) |
 | `include` | `"none"` | Which relations to join |
 | `pagination` | `"all"` | Page / limit |
 
@@ -172,6 +172,12 @@ By default every field/relation that *exists* in the schema is queryable. A poli
 restricts that surface per entity, so a frontend can read a field but not filter/sort on it,
 not include an expensive relation, or not over-fetch a huge page. Enforced by the parser
 (throws `QueryValidationError`); `maxPerPage` is *clamped*, not rejected.
+
+As of 0.14.0, fields denied for `select` are also stripped from the *default* selection:
+a query without an explicit `select` (i.e. `select: "all"`) gets a Prisma `omit` of the
+denied fields, at the root and inside included relations — denied/secret fields never
+come back, even unasked, while every other column (including ones the genquery schema
+doesn't model, like `Json` or scalar arrays) keeps Prisma's default selection.
 
 Low-level: optional flags on the schema (`filterable` / `sortable` / `selectable` on fields,
 `includable` / `filterable` on relations, `maxPerPage` on entities — all default to allowed).

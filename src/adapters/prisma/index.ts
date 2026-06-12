@@ -15,6 +15,7 @@ export type {
   PrismaInclude,
   PrismaModelDef,
   PrismaModelDelegate,
+  PrismaOmit,
   PrismaSelect,
   PrismaWhere,
 } from "./types";

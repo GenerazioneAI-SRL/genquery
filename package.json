@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "0.13.1",
+  "version": "0.14.0",
   "description": "ORM-agnostic JSON query language with a pluggable Prisma adapter",
   "license": "BSD-3-Clause",
   "repository": {
@@ -41,6 +41,7 @@
   },
   "files": [
     "dist",
+    "!dist/tests",
     "README.md",
     "LICENSE",
     "spec.md"
