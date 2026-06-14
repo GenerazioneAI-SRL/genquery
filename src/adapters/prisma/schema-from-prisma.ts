@@ -153,6 +153,15 @@ function buildEntity(
       continue;
     }
 
+    // Postgres `uuid` columns have no text-search operator — `ILIKE` / `~~*`
+    // errors with `operator does not exist: uuid ~~* unknown`. Treat any
+    // `@db.Uuid` scalar as `id` (exact equality + `in`) even when it is not a
+    // PK or relation FK (e.g. cross-service semantic links like `learnerId`).
+    if (isUuidNative(f)) {
+      fields[f.name] = { type: "id", nullable: !f.isRequired };
+      continue;
+    }
+
     // scalar
     const fieldType = mapScalar(f, model.name, options);
     if (!fieldType) {
@@ -206,6 +215,18 @@ function derivePrimaryKey(model: PrismaModelDef): string | undefined {
   // convention in `schema.prisma` is to name the PK field `id`.
   const conventionalId = model.fields.find((f) => f.name === "id");
   return conventionalId?.name;
+}
+
+/**
+ * True for a scalar column whose DMMF native type is Postgres `uuid`
+ * (`@db.Uuid`). Such columns reject text-search operators at the database
+ * level, so genquery matches them by exact equality (`id`) instead of `string`.
+ */
+function isUuidNative(field: PrismaFieldDef): boolean {
+  const nt = field.nativeType;
+  return (
+    !field.isList && Array.isArray(nt) && typeof nt[0] === "string" && nt[0] === "Uuid"
+  );
 }
 
 function mapScalar(

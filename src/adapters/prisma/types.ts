@@ -91,6 +91,15 @@ export interface PrismaFieldDef {
    * always matched by exact equality.
    */
   relationFromFields?: readonly string[];
+  /**
+   * DMMF native database type, e.g. `["Uuid", []]` for `@db.Uuid`. A scalar
+   * column backed by a Postgres `uuid` type has no text-search operator
+   * (`ILIKE` / `~~*` errors), so genquery treats such columns as `id` (exact
+   * equality + `in`) even when they are neither a primary key nor a relation
+   * foreign key — e.g. cross-service semantic links like `learnerId` that have
+   * no Prisma `@relation` on this model. `null` / absent → not a native type.
+   */
+  nativeType?: readonly [string, readonly unknown[]] | null;
 }
 
 export interface PrismaEnumDef {

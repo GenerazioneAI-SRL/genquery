@@ -580,3 +580,76 @@ test("object form rejects combining in and notIn, and non-array values", () => {
     QueryValidationError,
   );
 });
+
+// --- @db.Uuid scalar → exact match (id), not ILIKE string search (0.14.2) ---
+// Regression: a Postgres `uuid` column that is neither a PK nor a relation FK
+// (e.g. a cross-service semantic link like `learnerId`) was classified as a
+// `string` field → genquery emitted `contains` / `mode: insensitive` → Prisma
+// `ILIKE` → DB error `operator does not exist: uuid ~~* unknown`.
+test("schemaFromPrisma: @db.Uuid scalar is typed as id (exact match)", () => {
+  const dm: PrismaDatamodel = {
+    models: [
+      {
+        name: "ExamTry",
+        fields: [
+          { name: "id", kind: "scalar", type: "String", isList: false, isRequired: true, isId: true, nativeType: ["Uuid", []] },
+          { name: "learnerId", kind: "scalar", type: "String", isList: false, isRequired: true, nativeType: ["Uuid", []] },
+          { name: "label", kind: "scalar", type: "String", isList: false, isRequired: false },
+        ],
+      },
+    ],
+    enums: [],
+  };
+  const schema = schemaFromPrisma(dm);
+  const fields = schema.entities.ExamTry.fields;
+  // uuid scalar with no relation → id (exact), NOT string
+  assert.equal(fields.learnerId.type, "id");
+  // plain string stays a string (text search still works)
+  assert.equal(fields.label.type, "string");
+});
+
+test("buildArgs: filtering a @db.Uuid scalar emits equals, not contains/ILIKE", () => {
+  const dm: PrismaDatamodel = {
+    models: [
+      {
+        name: "ExamTry",
+        fields: [
+          { name: "id", kind: "scalar", type: "String", isList: false, isRequired: true, isId: true, nativeType: ["Uuid", []] },
+          { name: "learnerId", kind: "scalar", type: "String", isList: false, isRequired: true, nativeType: ["Uuid", []] },
+        ],
+      },
+    ],
+    enums: [],
+  };
+  const engine = createPrismaEngine(dm);
+  const uuid = "0672976f-0000-4000-8000-000000000000";
+  const args = engine.runParsed(
+    engine.parse({ searchBy: { learnerId: uuid } }, "ExamTry"),
+    {} as any,
+  );
+  // exact equality (shorthand), no { contains, mode: "insensitive" }
+  assert.deepEqual(args.where, { learnerId: uuid });
+});
+
+test("buildArgs: a @db.Uuid scalar supports IN lists", () => {
+  const dm: PrismaDatamodel = {
+    models: [
+      {
+        name: "ExamTry",
+        fields: [
+          { name: "id", kind: "scalar", type: "String", isList: false, isRequired: true, isId: true, nativeType: ["Uuid", []] },
+          { name: "learnerId", kind: "scalar", type: "String", isList: false, isRequired: true, nativeType: ["Uuid", []] },
+        ],
+      },
+    ],
+    enums: [],
+  };
+  const engine = createPrismaEngine(dm);
+  const a = "0672976f-0000-4000-8000-000000000001";
+  const b = "0672976f-0000-4000-8000-000000000002";
+  const args = engine.runParsed(
+    engine.parse({ searchBy: { learnerId: [a, b] } }, "ExamTry"),
+    {} as any,
+  );
+  assert.deepEqual(args.where, { learnerId: { in: [a, b] } });
+});
