@@ -164,6 +164,22 @@ A string is searched against a specified regex. The regex is in the language nat
 		id: ["uuid-1", "uuid-2", "uuid-3"],
 		exampleEnumField: ["allowedValue1", "allowedValue2"],
 
+		// Postgres `uuid` columns (DMMF nativeType Uuid) are typed as `id`
+		// fields by schemaFromPrisma even when they are not a primary key or
+		// relation FK (e.g. a cross-service semantic link). They use exact
+		// equality + IN, never splitword/contains — a uuid is never
+		// substring-searched (Prisma ILIKE on uuid errors at the DB).
+
+		// Explicit membership object form: `{ in: [...] }` / `{ notIn: [...] }`.
+		// Works on every value-typed field (id, string, enum, number). `notIn`
+		// maps to SQL NOT IN. Unlike the bare-array shorthand above, EMPTY lists
+		// are allowed here: `in: []` matches nothing, `notIn: []` matches all.
+		// Constraints (rejected at parse time): the value must be an array;
+		// `in` and `notIn` cannot both appear in the same object.
+
+		exampleEnumField: { in: ["allowedValue1", "allowedValue2"] },
+		exampleNumberField: { notIn: [1, 2, 3] },
+
 		// date
 
 		date: dateTimeType | presenceCheckType | { before: dateTimeType, after: dateTimeType }, // either before or after can be omitted from the object
